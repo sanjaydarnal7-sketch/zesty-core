@@ -1,0 +1,27 @@
+{
+  "version": "1.0",
+  "brain": "ZestyBrain",
+  "memory_format": {
+    "title": "",
+    "category": "",
+    "created": "",
+    "updated": "",
+    "tags": [],
+    "importance": 1,
+    "source": "user",
+    "status": "active",
+    "summary": "",
+    "content": ""
+  },
+  "allowed_categories": [
+    "Business",
+    "Clients",
+    "Family",
+    "Friends",
+    "Journal",
+    "Knowledge",
+    "Projects",
+    "Recipes",
+    "Social"
+  ]
+}
