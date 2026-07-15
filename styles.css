@@ -1,0 +1,571 @@
+/* Orb visuals: multi-layered plasma spheres, no flat solids */
+:root{
+  --orb-size:72px;
+  --transition-fast: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  --local-core-rgba: rgba(0,255,242,0.6);
+  --local-mid-rgba: rgba(0,200,220,0.28);
+  --local-deep-rgba: rgba(0,120,140,0.12);
+  --cloud-start: #7b2ff7; /* electric purple */
+  --cloud-end: #1199fa;   /* cosmic blue */
+  --cloud-halo-rgba: rgba(120,72,255,0.22);
+}
+
+.orb{
+  width: var(--orb-size);
+  height: var(--orb-size);
+  border-radius: 50%;
+  position: relative;
+  display: inline-block;
+  background: transparent;
+  overflow: hidden;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  transition: var(--transition-fast);
+  opacity: 0.25; /* EXACT idle opacity requested */
+  transform: scale(1);
+  will-change: transform, opacity;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.55), inset 0 0 10px rgba(255,255,255,0.02);
+  pointer-events: auto;
+}
+
+/* !!! HARD CONFIGURATION LOCK - GHOST CORE VISUALS - DO NOT ALTER EXTRACTIONS !!! */
+/* Frozen: #zustyVoiceCore shell, eyes, and blink keyframes - DO NOT EDIT */
+/* These rules are intentionally specific and locked as the canonical baseline. */
+
+/* Ensure the outer shell remains absolutely stable and unmodified */
+#zustyVoiceCore {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 50% !important;
+  background: rgba(224, 255, 255, 0.06) !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+  border: 1px solid rgba(224, 255, 255, 0.3) !important;
+  box-shadow: 0 0 15px rgba(224, 255, 255, 0.15), inset 0 0 10px rgba(224, 255, 255, 0.1) !important;
+  position: fixed !important; /* locked coordinates */
+  z-index: 99999 !important;
+  cursor: grab !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  user-select: none !important;
+  touch-action: none !important;
+  animation: none !important; /* NO animation on shell */
+}
+
+/* Eyes: only these spans animate and are intentionally isolated */
+#zustyVoiceCore .orb-eyes span {
+  width: 5px !important;
+  height: 5px !important;
+  background: #e0ffff !important;
+  border-radius: 50% !important;
+  box-shadow: 0 0 8px #e0ffff !important;
+  display: inline-block !important;
+  transform-origin: center !important;
+  animation: explicitCoreBlink 3.8s infinite ease-in-out !important;
+}
+
+@keyframes explicitCoreBlink {
+  0%, 90%, 100% { transform: scaleY(1); opacity: 1; }
+  95% { transform: scaleY(0.1); opacity: 0.2; }
+}
+
+
+/* gentle sizing responsiveness */
+@media (max-width:420px){
+  :root{ --orb-size:56px; }
+}
+
+/* Core emissive layer (sharp inner plasma) */
+.orb::before{
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  z-index: 1;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  transform-origin: 50% 50%;
+  transition: var(--transition-fast);
+}
+
+/* Outer dynamic sheen / rotating aura */
+.orb::after{
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  z-index: 2;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: 0.9;
+  transform-origin: 50% 50%;
+  transition: var(--transition-fast);
+}
+
+/* Local Nous Hermes 3 Core — neon-cyan plasma */
+#localNousOrb::before{
+  background:
+    radial-gradient(circle at 40% 38%, var(--local-core-rgba) 0%, rgba(0,230,220,0.42) 6%, rgba(0,200,210,0.24) 16%, rgba(0,160,180,0.12) 28%, transparent 58%),
+    radial-gradient(circle at 62% 64%, rgba(255,255,255,0.55) 0%, transparent 18%);
+  box-shadow: inset 0 0 22px rgba(0,255,242,0.16), 0 0 40px rgba(0,255,242,0.06);
+}
+
+#localNousOrb::after{
+  background: conic-gradient(from 180deg at 50% 50%, rgba(255,255,255,0.06), rgba(0,255,242,0.10), rgba(0,210,230,0.06));
+  filter: blur(6px);
+  box-shadow: 0 0 46px rgba(0,255,242,0.12), inset 0 0 28px rgba(0,255,242,0.08);
+  mix-blend-mode: screen;
+}
+
+/* Cloud Gemini Brain — shifting electric purple / blue fluid core */
+#geminiBrainOrb::before{
+  background:
+    radial-gradient(circle at 34% 34%, rgba(255,255,255,0.62) 0%, transparent 18%),
+    radial-gradient(circle at 68% 60%, rgba(200,180,255,0.92) 0%, transparent 28%),
+    linear-gradient(135deg, var(--cloud-start) 0%, var(--cloud-end) 100%);
+  box-shadow: inset 0 0 28px rgba(88,24,255,0.12), 0 0 54px rgba(88,24,255,0.06);
+}
+
+#geminiBrainOrb::after{
+  background: radial-gradient(circle at 56% 44%, rgba(255,255,255,0.06), transparent 30%),
+              linear-gradient(180deg, rgba(255,255,255,0.02), transparent 60%);
+  filter: blur(8px);
+  box-shadow: 0 0 60px var(--cloud-halo-rgba), inset 0 0 36px rgba(120,90,255,0.14);
+  mix-blend-mode: screen;
+}
+
+/* Active state class applied by JS when hardware/listening/event triggers */
+.orb-active{
+  transform: scale(1.25); /* exact scale requested */
+  opacity: 1.0;            /* exact full opacity requested */
+  transition: var(--transition-fast);
+  box-shadow: 0 18px 64px rgba(0,0,0,0.6), inset 0 0 48px rgba(255,255,255,0.03);
+}
+
+/* When orb becomes active, rotate the ::after sheen to simulate processing */
+.orb-active::after{
+  animation: spin-glow 6.6s linear infinite;
+}
+
+@keyframes spin-glow{
+  0%{ transform: rotate(0deg); }
+  100%{ transform: rotate(360deg); }
+}
+
+/* subtle hover affordance (non-intrusive) */
+.orb:hover{ transform: scale(1.06); opacity: 0.36; }
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce){
+  .orb, .orb::after, .orb::before { transition-duration: 0.001ms !important; animation: none !important; }
+}
+/* ============================================================================
+   PHASE 1: ZESTY CORE ORB — PURE CSS EXPRESSION ARTISTRY
+   ============================================================================ */
+
+/* Base Volumetric 3D Core Orb — enforced visibility and dimensions */
+.zusty-core-orb{
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-direction: column !important;
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  position: relative;
+  background: transparent none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  -webkit-box-shadow: none !important;
+  filter: none !important;
+  animation: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  opacity: 1.0 !important;
+  transform: none !important;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+  will-change: transform, opacity;
+  pointer-events: auto;
+  overflow: visible;
+  margin-left: 10px !important;
+}
+
+@keyframes plasmaRotate {
+  100% { transform: rotate(360deg); }
+}
+
+/* ---- Orb Eyes: Micro Glowing Dots ---- */
+.orb-eyes{
+  position: relative !important;
+  width: auto !important;
+  height: auto !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 2;
+  gap: 5px;
+}
+
+/* Ensure the small white eye dots render even when inline spans used */
+.zusty-core-orb .orb-eyes span,
+.zusty-core-orb .orb-eyes .orb-eye{
+  width: 4px !important;
+  height: 4px !important;
+  background: #e0ffff !important;
+  border-radius: 50% !important;
+  display: inline-block !important;
+  margin: 0 3px !important;
+  box-shadow: 0 0 4px #e0ffff !important;
+}
+
+.orb-eye{
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #ffffff;
+  display: inline-block;
+  box-shadow: 0 0 5px #ffffff;
+  opacity: 0.95;
+  flex-shrink: 0;
+}
+
+.orb-eye:first-child{
+  left: auto;
+}
+
+.orb-eye:last-child{
+  right: auto;
+}
+
+
+/* ============================================================================
+   LISTENING STATE — Subtle Ripple & Pulse with Blinking Eyes
+   ============================================================================ */
+.zusty-core-orb.state-listening{
+  transform: scale(1.1);
+  box-shadow: 0 0 30px rgba(0, 255, 242, 0.8);
+  opacity: 0.5;
+  animation: pulse-listening 2s ease-in-out infinite;
+}
+
+.zusty-core-orb.state-listening .orb-eye{
+  animation: blink-eyes 3s ease-in-out infinite;
+}
+
+@keyframes pulse-listening{
+  0%, 100%{ transform: scale(1.1); box-shadow: 0 0 30px rgba(0, 255, 242, 0.8); }
+  50%{ transform: scale(1.15); box-shadow: 0 0 40px rgba(0, 255, 242, 1); }
+}
+
+@keyframes blink-eyes{
+  0%, 10%, 15%, 100%{ opacity: 0.9; }
+  5%, 12%{ opacity: 0.2; }
+}
+
+/* ============================================================================
+   LOCAL HERMES ENGINE STATE — Neon-Cyan Saturation & Fast Plasma Spin
+   ============================================================================ */
+.zusty-core-orb.state-hermes{
+  background: radial-gradient(circle at 35% 35%, rgba(0, 255, 242, 0.95) 0%, rgba(0, 230, 220, 0.6) 35%, rgba(17, 153, 250, 0.25) 70%, rgba(123, 47, 247, 0.05) 100%);
+  box-shadow: 0 0 32px rgba(0, 255, 242, 0.95), inset 0 0 16px rgba(0, 255, 242, 0.3);
+  transform: scale(1.15);
+  opacity: 0.85;
+  animation: spin-plasma-hermes 2.4s linear infinite;
+}
+
+.zusty-core-orb.state-hermes .orb-eye{
+  background: #00fff2;
+  box-shadow: 0 0 10px #00fff2;
+  animation: eyes-alert 1.2s ease-in-out infinite;
+}
+
+@keyframes spin-plasma-hermes{
+  0%{ filter: hue-rotate(0deg); }
+  100%{ filter: hue-rotate(360deg); }
+}
+
+@keyframes eyes-alert{
+  0%, 100%{ transform: scale(1); }
+  50%{ transform: scale(1.15); }
+}
+
+/* ============================================================================
+   CLOUD GEMINI ENGINE STATE — Electric Purple & Cosmic Blue with Breath
+   ============================================================================ */
+.zusty-core-orb.state-gemini{
+  background: radial-gradient(circle at 35% 35%, rgba(215, 0, 255, 0.9) 0%, rgba(123, 47, 247, 0.5) 40%, rgba(17, 100, 250, 0.3) 75%, rgba(0, 50, 150, 0.1) 100%);
+  box-shadow: 0 0 36px rgba(215, 0, 255, 0.8), inset 0 0 20px rgba(123, 47, 247, 0.2);
+  transform: scale(1.12);
+  opacity: 0.75;
+  animation: pulse-thought-gemini 3.2s ease-in-out infinite;
+}
+
+.zusty-core-orb.state-gemini .orb-eye{
+  background: rgba(215, 100, 255, 1);
+  box-shadow: 0 0 12px rgba(215, 100, 255, 0.9);
+  animation: eyes-contemplative 2s ease-in-out infinite;
+}
+@keyframes pulse-thought-gemini{
+  0%, 100%{ transform: scale(1.12); box-shadow: 0 0 36px rgba(215, 0, 255, 0.8), inset 0 0 20px rgba(123, 47, 247, 0.2); }
+  50%{ transform: scale(1.18); box-shadow: 0 0 50px rgba(215, 0, 255, 1), inset 0 0 28px rgba(123, 47, 247, 0.35); }
+}
+
+@keyframes eyes-contemplative{
+  0%, 100%{ transform: translateY(0); opacity: 0.9; }
+  50%{ transform: translateY(-1px); opacity: 0.7; }
+}
+
+/* ============================================================================
+   ULTIMATE COMPOSITE MODE — Rainbow Aurora Plasma with Maximum Brilliance
+   ============================================================================ */
+.zusty-core-orb.state-ultimate{
+  background: linear-gradient(45deg,
+    rgba(255, 0, 127, 0.95) 0%,
+    rgba(255, 100, 0, 0.85) 20%,
+    rgba(255, 255, 0, 0.75) 40%,
+    rgba(0, 255, 100, 0.85) 60%,
+    rgba(0, 127, 255, 0.95) 80%,
+    rgba(215, 0, 255, 0.95) 100%),
+    radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.8) 0%, transparent 40%);
+  box-shadow: 
+    0 0 48px rgba(255, 0, 127, 0.9),
+    0 0 80px rgba(0, 255, 242, 0.7),
+    inset 0 0 32px rgba(255, 255, 255, 0.4);
+  transform: scale(1.25);
+  opacity: 1.0;
+  animation: aurora-ultimate 4s ease-in-out infinite;
+}
+
+.zusty-core-orb.state-ultimate .orb-eye{
+  background: #ffffff;
+  box-shadow: 0 0 14px #ffffff, 0 0 28px rgba(255, 255, 255, 0.6);
+  animation: eyes-ultimate 1.4s ease-in-out infinite;
+}
+@keyframes aurora-ultimate{
+  0%, 100%{ 
+    filter: hue-rotate(0deg) brightness(1);
+    transform: scale(1.25);
+    box-shadow: 
+      0 0 48px rgba(255, 0, 127, 0.9),
+      0 0 80px rgba(0, 255, 242, 0.7),
+      inset 0 0 32px rgba(255, 255, 255, 0.4);
+  }
+  25%{ 
+    filter: hue-rotate(90deg) brightness(1.1);
+    transform: scale(1.28);
+    box-shadow: 
+      0 0 60px rgba(0, 255, 242, 0.95),
+      0 0 100px rgba(100, 200, 255, 0.8),
+      inset 0 0 40px rgba(255, 255, 255, 0.5);
+  }
+  50%{ 
+    filter: hue-rotate(180deg) brightness(1);
+    transform: scale(1.25);
+    box-shadow: 
+      0 0 48px rgba(215, 0, 255, 0.95),
+      0 0 90px rgba(255, 100, 200, 0.75),
+      inset 0 0 35px rgba(255, 255, 255, 0.45);
+  }
+  75%{ 
+    filter: hue-rotate(270deg) brightness(1.15);
+    transform: scale(1.27);
+    box-shadow: 
+      0 0 70px rgba(100, 255, 200, 0.9),
+      0 0 110px rgba(0, 200, 255, 0.8),
+      inset 0 0 42px rgba(255, 255, 255, 0.5);
+  }
+}
+
+@keyframes eyes-ultimate{
+  0%, 100%{ 
+    transform: scale(1);
+    box-shadow: 0 0 14px #ffffff, 0 0 28px rgba(255, 255, 255, 0.6);
+  }
+  50%{ 
+    transform: scale(1.2);
+    box-shadow: 0 0 18px #ffffff, 0 0 36px rgba(255, 255, 255, 0.8);
+  }
+}
+
+@keyframes smile-ultimate{
+  0%, 100%{ transform: translateX(-50%) scaleY(1); opacity: 1; }
+  50%{ transform: translateX(-50%) scaleY(1.2); opacity: 1; }
+}
+
+/* ============================================================================
+   REDUCED MOTION FALLBACK FOR PHASE 1 ORB SYSTEM
+   ============================================================================ */
+@media (prefers-reduced-motion: reduce){
+  .zusty-core-orb, 
+  .zusty-core-orb.state-listening,
+  .zusty-core-orb.state-hermes,
+  .zusty-core-orb.state-gemini,
+  .zusty-core-orb.state-ultimate{
+    animation: none !important;
+    transition: opacity 0.001ms !important;
+  }
+}
+
+/* ==========================================================================
+   FACE MICRO-ANIMATIONS — blinking eyes + morphing smile during listening
+   ==========================================================================*/
+
+/* 1. Make the eyes blink continuously when listening */
+.zusty-core-orb.state-listening .orb-eyes span,
+.zusty-core-orb.state-listening .orb-eyes div {
+    animation: eyeBlink 1.5s infinite ease-in-out !important;
+}
+
+/* 3. The Core Eye Blinking Keyframe */
+@keyframes eyeBlink {
+    0%, 90%, 100% { transform: scaleY(1); opacity: 1; }
+    95% { transform: scaleY(0.1); opacity: 0.3; }
+}
+
+/* 4. The Core Smile Morphing Keyframe */
+@keyframes smileWave {
+    0%, 100% { transform: scaleX(1) translateY(0); border-radius: 0 0 10px 10px; }
+    50% { transform: scaleX(1.15) translateY(1px); border-radius: 0 0 14px 14px; }
+}
+
+/* Force the listening state animation to break through inline style locks */
+.zusty-core-orb.state-listening {
+  background: radial-gradient(circle at 35% 35%, #00fff2 0%, #1199fa 50%, #7b2ff7 100%) !important;
+  animation: orbPulseRipple 1.2s infinite ease-in-out !important;
+  box-shadow: 0 0 30px #00fff2, inset 0 0 10px rgba(255,255,255,0.6) !important;
+  opacity: 1.0 !important;
+}
+
+/* Force Hermes State rotation */
+.zusty-core-orb.state-hermes {
+  background: radial-gradient(circle at 35% 35%, #00fff2 0%, #00b3ff 100%) !important;
+  animation: orbFastSpin 0.8s infinite linear !important;
+  box-shadow: 0 0 25px #00fff2 !important;
+}
+
+/* Force Gemini State deep pulse */
+.zusty-core-orb.state-gemini {
+  background: radial-gradient(circle at 35% 35%, #7b2ff7 0%, #1199fa 100%) !important;
+  animation: orbDeepBreath 2s infinite ease-in-out !important;
+  box-shadow: 0 0 25px #7b2ff7 !important;
+}
+
+/* Base Keyframes Definitions */
+@keyframes orbPulseRipple {
+  0% { transform: scale(1); box-shadow: 0 0 15px #00fff2; }
+  50% { transform: scale(1.12); box-shadow: 0 0 35px #00fff2, 0 0 10px #1199fa; }
+  100% { transform: scale(1); box-shadow: 0 0 15px #00fff2; }
+}
+
+@keyframes orbFastSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes orbDeepBreath {
+  0% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+  100% { opacity: 0.7; transform: scale(1); }
+}
+
+/* Minimal transparent bottom-row orb container */
+#zustyVoiceCore {
+    width: 36px !important;
+    height: 36px !important;
+    background: transparent none !important;
+    border: 0px solid transparent !important;
+    box-shadow: none !important;
+    -webkit-box-shadow: none !important;
+    position: relative !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    user-select: none !important;
+    touch-action: none !important;
+    cursor: pointer !important;
+    margin-left: 10px !important;
+    padding: 0 !important;
+    outline: none !important;
+    background-clip: padding-box !important;
+}
+
+#zustyVoiceCore:active {
+    cursor: pointer !important;
+}
+
+#zustyFlashCanvas {
+  position: absolute !important;
+  inset: 0 !important;
+  background: rgba(10, 10, 15, 0.4) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  z-index: 5 !important;
+}
+
+#hermesVaultPanel {
+  position: fixed !important;
+  right: 0 !important;
+  top: 0 !important;
+  width: 60px !important;
+  height: 100vh !important;
+  background: transparent !important;
+  border: none !important;
+  border-left: none !important;
+  box-shadow: none !important;
+  z-index: 999 !important;
+  pointer-events: none !important;
+}
+
+/* Glowing Floating Face Elements Base State (Off-White Tint) */
+#zustyVoiceCore .orb-eyes span {
+    width: 4px;
+    height: 4px;
+    background: #e0ffff !important; /* Minimalist Neon Tint */
+    border-radius: 50%;
+    box-shadow: 0 0 6px #e0ffff !important;
+    display: inline-block;
+    transition: background 0.3s, box-shadow 0.3s;
+}
+
+#zustyVoiceCore .orb-eyes span {
+    width: 4px;
+    height: 4px;
+    background: #e0ffff !important; /* Minimalist Neon Tint */
+    border-radius: 50%;
+    box-shadow: 0 0 6px #e0ffff !important;
+    display: inline-block;
+    transition: background 0.3s, box-shadow 0.3s;
+}
+
+/* --- THE KINETIC SIGNAL STATES (EYES CHANGE COLOR ONLY) --- */
+
+/* Active Listening: Smooth Sonic Wave Response */
+#zustyVoiceCore.state-listening .orb-eyes span {
+    animation: digitalBlink 1.8s infinite ease-in-out !important;
+}
+
+/* Local Hermes State (Keyword: "local") -> Sharp Neon Cyan */
+#zustyVoiceCore.state-hermes .orb-eyes span { background: #00fff2 !important; box-shadow: 0 0 8px #00fff2 !important; }
+
+/* Cloud Gemini State (Keyword: "research") -> Cosmic Purple */
+#zustyVoiceCore.state-gemini .orb-eyes span { background: #7b2ff7 !important; box-shadow: 0 0 8px #7b2ff7 !important; }
+
+/* Critical Malfunction Tracker (Keyword: "error") -> Crimson Sad Eyes */
+#zustyVoiceCore.state-error .orb-eyes span { background: #ff3b30 !important; box-shadow: 0 0 8px #ff3b30 !important; }
+
+/* --- ANIMATION DESIGNS --- */
+@keyframes digitalBlink {
+    0%, 90%, 100% { transform: scaleY(1); }
+    95% { transform: scaleY(0.1); }
+}
+@keyframes sonicWaveLine {
+    0% { transform: scaleY(1); }
+    100% { transform: scaleY(3.5); }
+}
