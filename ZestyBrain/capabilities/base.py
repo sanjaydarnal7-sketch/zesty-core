@@ -1,12 +1,12 @@
 """
 Zesty OS
 Capability Base
-Version: 1.0
+Version: 1.1
 
 Mission 47
 
-Defines the standard contract that every
-Jessie capability must implement.
+Defines the standard interface that every
+Jessie Capability must implement.
 """
 
 from __future__ import annotations
@@ -18,6 +18,8 @@ from typing import Any
 
 @dataclass(slots=True)
 class CapabilityMetadata:
+    """Describes a capability."""
+
     name: str
     version: str
     description: str
@@ -39,6 +41,7 @@ class CapabilityMetadata:
 
 @dataclass(slots=True)
 class CapabilityRequest:
+    """Input passed to a capability."""
 
     capability: str
 
@@ -47,6 +50,7 @@ class CapabilityRequest:
 
 @dataclass(slots=True)
 class CapabilityResponse:
+    """Standard capability response."""
 
     success: bool
 
@@ -56,15 +60,45 @@ class CapabilityResponse:
 
 
 class BaseCapability(ABC):
+    """
+    Base class that every capability must inherit.
+    """
 
     metadata: CapabilityMetadata
 
     @abstractmethod
     def execute(
         self,
-        request: CapabilityRequest
+        request: CapabilityRequest,
     ) -> CapabilityResponse:
         """
         Execute the capability.
         """
         raise NotImplementedError
+
+
+if __name__ == "__main__":
+
+    metadata = CapabilityMetadata(
+        name="Demo Capability",
+        version="1.0",
+        description="Capability Base Self Test"
+    )
+
+    request = CapabilityRequest(
+        capability="demo",
+        payload={"message": "Hello Jessie"}
+    )
+
+    response = CapabilityResponse(
+        success=True,
+        message="Capability Base Loaded Successfully"
+    )
+
+    print("===== CAPABILITY BASE TEST =====")
+    print()
+    print(metadata)
+    print()
+    print(request)
+    print()
+    print(response)
