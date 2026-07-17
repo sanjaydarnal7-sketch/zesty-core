@@ -8,7 +8,7 @@ Mission 21
 Universal interface for all AI providers.
 """
 
-from core.runtime_manager import RuntimeManager
+from core.runtime.manager import RuntimeManager
 
 
 class AISDK:
