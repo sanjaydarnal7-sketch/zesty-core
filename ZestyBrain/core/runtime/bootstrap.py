@@ -9,27 +9,27 @@ Initializes the runtime foundation.
 
 from __future__ import annotations
 
-from core.runtime.lifecycle import RuntimeLifecycle, RuntimePhase
-from core.runtime.config import RuntimeConfig
-from core.runtime.state import RuntimeState
+from core.runtime.manager import RuntimeManager
 
 
 class RuntimeBootstrap:
-    """Initializes the runtime."""
+    """Create and initialize the canonical Zesty OS runtime."""
 
-    def __init__(self) -> None:
-        self.lifecycle = RuntimeLifecycle()
-        self.config = RuntimeConfig()
-        self.state = RuntimeState()
+    def __init__(self, runtime_manager: RuntimeManager | None = None) -> None:
+        """Create the runtime manager before exposing runtime dependencies."""
+        self.runtime_manager = runtime_manager or RuntimeManager()
+        self.lifecycle = self.runtime_manager.lifecycle
+        self.config = self.runtime_manager.runtime_config
+        self.state = self.runtime_manager.state
 
     def initialize(self) -> None:
-        self.lifecycle.set_phase(RuntimePhase.STARTING)
-
-        self.state.set("runtime_status", "running")
-
+        """Initialize the runtime through its canonical coordinator."""
+        self.runtime_manager.initialize()
         print("Runtime initialized successfully.")
 
-        self.lifecycle.set_phase(RuntimePhase.RUNNING)
+    def shutdown(self) -> None:
+        """Shut down the canonical runtime coordinator."""
+        self.runtime_manager.shutdown()
 
 
 if __name__ == "__main__":

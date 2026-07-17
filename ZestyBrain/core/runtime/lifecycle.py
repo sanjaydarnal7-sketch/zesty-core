@@ -16,6 +16,7 @@ class RuntimePhase(Enum):
     INITIALIZING = "initializing"
     STARTING = "starting"
     RUNNING = "running"
+    FAILED = "failed"
     STOPPING = "stopping"
     STOPPED = "stopped"
 
