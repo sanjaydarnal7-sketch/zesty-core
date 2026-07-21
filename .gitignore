@@ -58,3 +58,18 @@ logs/
 # OS
 # =========================
 Thumbs.db
+# =========================
+# Runtime Databases
+# =========================
+zesty.db
+zesty_memory.db
+
+# =========================
+# Runtime State
+# =========================
+zesty_state.json
+
+# =========================
+# Generated Reports
+# =========================
+zesty_inventory.txt
