@@ -8,74 +8,32 @@ import re
 import sys
 import logging
 from datetime import datetime
-
 from flask import Flask, request, jsonify, send_from_directory
 import requests
 from edge_tts import Communicate
-
 from chromadb import EmbeddingFunction, Documents, Embeddings
 import chromadb
+from ZestyBrain.runtime_manager import RuntimeManager
+from ZestyBrain.services.weather_service import WeatherService
+from ZestyBrain.services.research_service import ResearchService
+from ZestyBrain.services.tts_service import TTSService
 
-logging.getLogger("wsgi").setLevel(logging.ERROR)
-logging.getLogger("werkzeug").setLevel(logging.ERROR)
+
+logging.getLogger('wsgi').setLevel(logging.ERROR)
+logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
 app = Flask(__name__, static_folder=".")
 app.logger.disabled = True
 #endregion
 
-
 # =====================================================================
-#region 🛸 1. UNIVERSAL COGNITIVE POOL
+#region 🛸 1. UNIVERSAL COGNITIVE POOL (LOCAL RUNTIME)
 # =====================================================================
-
-# Read API Keys securely from Environment Variables
-API_VAULT = [
-
-    os.getenv("GROQ_API_KEY"),
-
-]
-
-# Remove empty / None values automatically
-API_VAULT = [key for key in API_VAULT if key]
-
-CURRENT_KEY_INDEX = 0
-
-
-def get_active_groq_client():
-
-    if not API_VAULT:
-        raise RuntimeError(
-            "No Groq API key found. Please set GROQ_API_KEY environment variable."
-        )
-
-    global CURRENT_KEY_INDEX
-
-    from groq import Groq
-
-    key = API_VAULT[CURRENT_KEY_INDEX]
-
-    return Groq(api_key=key)
-
-
-def rotate_to_next_brain():
-
-    global CURRENT_KEY_INDEX
-
-    if len(API_VAULT) <= 1:
-        return
-
-    CURRENT_KEY_INDEX = (CURRENT_KEY_INDEX + 1) % len(API_VAULT)
-
-    print(
-        f"\n[🔄 STARK CORE ROTATION]: "
-        f"Shifting neural transmission to Brain Key Node {CURRENT_KEY_INDEX + 1}"
-    )
-
+runtime_manager = RuntimeManager()
+if not runtime_manager.is_ready():
+    raise RuntimeError("Ollama runtime unavailable")
 
 DB_DIR = "zesty_knowledge_base"
-
-chroma_client = chromadb.PersistentClient(path=DB_DIR)
-#endregion
 chroma_client = chromadb.PersistentClient(path=DB_DIR)
 JOURNAL_FILE = "boss_personal_journal.json"
 CONVERSATION_HISTORY = []
@@ -101,6 +59,11 @@ class ZestyCommercialOS:
         self.boss_mode_active = False
         if not os.path.exists(JOURNAL_FILE):
             with open(JOURNAL_FILE, "w") as f: json.dump([], f)
+
+        self.weather_service = WeatherService()
+        self.research_service = ResearchService()
+        self.tts_service = TTSService()
+
         self.cleanup_audio()
 
     def cleanup_audio(self):
@@ -110,11 +73,7 @@ class ZestyCommercialOS:
         except Exception: pass
 
     def get_live_weather(self):
-        try:
-            res = requests.get("https://wttr.in/Goa?format=%C+%t", timeout=2.0)
-            if res.status_code == 200: return res.text.strip()
-        except Exception: pass
-        return "Clear Sky +29°C"
+        return self.weather_service.get_weather()
 
     def clean_phonetics_layer(self, text: str) -> str:
         text = re.sub(r'^(hi\s+)?justi[a-z]*\s+|^जैस्री\s+', '', text, flags=re.IGNORECASE)
@@ -130,21 +89,7 @@ class ZestyCommercialOS:
         except Exception as e: return f"Memory storage node error: {str(e)}"
 
     def deep_internet_research(self, query: str) -> str:
-        print(f"\n[🚀 DEEP SEARCH]: Scanning intelligence for -> {query}")
-        try:
-            # अपग्रेड: DuckDuckGo लाइट मोड पर शिफ्ट ताकि HTML कभी फेल न हो और डेटा तुरंत आए
-            url = f"https://lite.duckduckgo.com/lite/"
-            headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
-            res = requests.post(url, data={"q": query}, headers=headers, timeout=5.0)
-            if res.status_code == 200:
-                # स्लीक रेगेक्स पैटर्न जो डिस्क्रिप्शन ब्लॉक्स को आसानी से निकालता है
-                snippets = re.findall(r'<td class="result-snippet">(.*?)</td>', res.text, re.DOTALL)
-                cleaned = [re.sub(r'<[^>]+>', '', s).strip() for s in snippets[:4]]
-                if cleaned:
-                    return "\n".join([f"• {s}" for s in cleaned])
-        except Exception as e:
-            print(f"[⚠️ SEARCH TELEMETRY]: Scraping node timed out. Reverting to base model knowledge.")
-        return ""
+        return self.research_service.search(query)
 
     def execute_os_command_or_research(self, text: str) -> tuple:
         cleaned = text.lower()
@@ -168,81 +113,92 @@ class ZestyCommercialOS:
     def query_local_chroma_database(self, user_text: str) -> str:
         try:
             results = collection.query(query_texts=[user_text], n_results=1)
-            if results and results['documents'] and results['documents'][0]: return results['documents'][0][0]
-        except Exception: pass
+
+            print("\n" + "=" * 70)
+            print("🗂 CHROMA RAW RESULT")
+            print("-" * 70)
+            print(results)
+            print("=" * 70 + "\n")
+
+            if results and results.get("documents") and results["documents"][0]:
+                return results["documents"][0][0]
+
+        except Exception as e:
+            print("[CHROMA ERROR]", e)
+
         return ""
 
     def speak_text_edge_seamless(self, text_to_speak: str, current_lang: str):
-        output_audio = "zesty_reply.mp3"
-        voice = "en-IN-NeerjaNeural" if current_lang == "english" else "hi-IN-SwaraNeural"
-        
-        subprocess.run(["pkill", "afplay"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if os.path.exists(output_audio):
-            try: os.remove(output_audio)
-            except Exception: pass
-
-        async def amain():
-            communicate = Communicate(text_to_speak, voice, rate="+8%", pitch="+10Hz")
-            await communicate.save(output_audio)
-
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(amain())
-            loop.close()
-            subprocess.Popen(["afplay", output_audio], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception as e:
-            print(f"Audio Playback Error: {e}")
+        self.tts_service.speak(text_to_speak, current_lang)
 #endregion
 
 # =====================================================================
 #region 🧠 3. INTENT-AWARE COGNITIVE LAYER
 # =====================================================================
+
     def call_llm(self, user_prompt: str, local_context: str, web_intel: str) -> tuple:
-        global CONVERSATION_HISTORY
+
         system_prompt = (
-            "You are ZESTY OS, an advanced operational intelligence network built for Sanjay Boss (Sanjay Darnal).\n"
-            "CRITICAL RULES:\n"
-            "1. You are strictly a FEMALE AI entity. Always use strict female verbs ('karti hoon', 'samjhati hoon').\n"
-            "2. At the very end of your response, you MUST append: [TARGET_PANEL: panel_name]\n"
-            "Choose 'panel_name' from: panelSocial, panelFlavour, panelFamily, panelCraftsmen, panelDriver, panelRecipe, panelHelp, panelSearch, CLOSE, chat.\n"
-            "Tone: Polished, authoritative female Hinglish matching Sanjay Boss's energy."
+            "At the end of every reply append exactly one tag in the form: [TARGET_PANEL: panel_name].\n"
+            "Allowed panels: panelSocial, panelFlavour, panelFamily, "
+            "panelCraftsmen, panelDriver, panelRecipe, panelHelp, "
+            "panelSearch, CLOSE, chat."
         )
-        
-        if local_context: system_prompt += f"\n[CONTEXT]: {local_context}"
-        if web_intel: system_prompt += f"\n[WEB INTEL]: {web_intel}"
 
-        messages = [{"role": "system", "content": str(system_prompt)}]
-        for hist in CONVERSATION_HISTORY[-4:]: messages.append(hist)
-        messages.append({"role": "user", "content": str(user_prompt)})
+        # Legacy personality injection disabled.
+        # Chroma knowledge will be re-integrated through ZestyBrain.
 
-        attempts = 0
-        while attempts < len(API_VAULT):
-            try:
-                client = get_active_groq_client()
-                completion = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=messages, # type: ignore
-                    temperature=0.1,
-                    max_tokens=1000
-                )
-                raw_reply = completion.choices[0].message.content or ""
-                
-                panel_target = "chat"
-                panel_match = re.search(r'\[TARGET_PANEL:\s*([A-Za-z_]+)\]', raw_reply)
-                if panel_match:
-                    panel_target = panel_match.group(1)
-                    raw_reply = re.sub(r'\[TARGET_PANEL:\s*[A-Za-z_]+\]', '', raw_reply).strip()
+        if web_intel:
+            system_prompt += f"\n[WEB INTEL]: {web_intel}"
 
-                CONVERSATION_HISTORY.append({"role": "user", "content": user_prompt})
-                CONVERSATION_HISTORY.append({"role": "assistant", "content": raw_reply})
-                if len(CONVERSATION_HISTORY) > 8: CONVERSATION_HISTORY.pop(0)
-                
-                return raw_reply, panel_target
-            except Exception:
-                rotate_to_next_brain()
-                attempts += 1
-        return "System array disruption. All core neural nodes are temporarily exhausted.", "chat"
+        try:
+
+            llm_start = time.perf_counter()
+
+            raw_reply = runtime_manager.generate(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                temperature=0.1,
+                max_tokens=1000,
+            ) or ""
+
+            llm_end = time.perf_counter()
+
+            print(f"[⏱ LLM TIME] {llm_end - llm_start:.2f} sec")
+
+            print("\n" + "=" * 70)
+            print("🧠 ZESTY RAW REPLY")
+            print("-" * 70)
+            print(raw_reply)
+            print("=" * 70 + "\n")
+
+            panel_target = "chat"
+
+            panel_match = re.search(
+                r'\[TARGET_PANEL:\s*([A-Za-z_]+)\]',
+                raw_reply,
+            )
+
+            if panel_match:
+                panel_target = panel_match.group(1)
+                raw_reply = re.sub(
+                    r'\[TARGET_PANEL:\s*[A-Za-z_]+\]',
+                    '',
+                    raw_reply,
+                ).strip()
+
+            return raw_reply, panel_target
+
+        except Exception as e:
+
+            print(f"[⚠️ RUNTIME ERROR]: {e}")
+
+            return (
+                "System array disruption. Local neural core is temporarily unavailable.",
+                "chat",
+            )
+
+
 
 zesty_os = ZestyCommercialOS()
 #endregion
@@ -286,6 +242,9 @@ def ask_hermes_endpoint():
 
     local_context = zesty_os.query_local_chroma_database(cleaned_input)
     reply_text, target_panel = zesty_os.call_llm(cleaned_input, local_context, output_intel)
+
+    print(f"[TARGET PANEL] {target_panel}")
+    print(f"[FINAL REPLY] {reply_text}")
     
     zesty_os.speak_text_edge_seamless(reply_text, lang_hint)
 

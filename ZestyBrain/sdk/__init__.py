@@ -1,3 +1,0 @@
-"""
-Zesty OS SDK Package
-"""

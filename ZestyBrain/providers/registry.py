@@ -1,123 +1,34 @@
 """
-Zesty OS
 Provider Registry
-Version: 1.0
-
-This registry manages all AI providers.
+Registers and retrieves LLM providers.
 """
 
-from dataclasses import dataclass
+from __future__ import annotations
 
+from typing import Dict
 
-@dataclass
-class Provider:
-
-    name: str
-
-    provider_type: str
-
-    internet: bool
-
-    local: bool
-
-    vision: bool
-
-    enabled: bool
-
-    priority: int
+from .base_provider import BaseProvider
 
 
 class ProviderRegistry:
+    """
+    Registry for all available providers.
+    """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        self._providers: Dict[str, BaseProvider] = {}
 
-        self.providers = {}
+    def register(self, provider: BaseProvider) -> None:
+        self._providers[provider.name] = provider
 
-    def register(self, provider: Provider):
+    def get(self, name: str) -> BaseProvider | None:
+        return self._providers.get(name)
 
-        self.providers[provider.name.lower()] = provider
+    def all(self) -> dict[str, BaseProvider]:
+        return dict(self._providers)
 
-    def get(self, name):
+    def available(self) -> list[str]:
+        return sorted(self._providers.keys())
 
-        return self.providers.get(name.lower())
-
-    def list_all(self):
-
-        return list(self.providers.values())
-
-
-if __name__ == "__main__":
-
-    registry = ProviderRegistry()
-
-    registry.register(
-
-        Provider(
-
-            name="Grok",
-
-            provider_type="Cloud",
-
-            internet=True,
-
-            local=False,
-
-            vision=True,
-
-            enabled=True,
-
-            priority=1
-
-        )
-
-    )
-
-    registry.register(
-
-        Provider(
-
-            name="Ollama",
-
-            provider_type="Local",
-
-            internet=False,
-
-            local=True,
-
-            vision=False,
-
-            enabled=True,
-
-            priority=2
-
-        )
-
-    )
-
-    registry.register(
-
-        Provider(
-
-            name="LM Studio",
-
-            provider_type="Local",
-
-            internet=False,
-
-            local=True,
-
-            vision=False,
-
-            enabled=True,
-
-            priority=3
-
-        )
-
-    )
-
-    print("===== REGISTERED PROVIDERS =====")
-
-    for provider in registry.list_all():
-
-        print(provider)
+    def has(self, name: str) -> bool:
+        return name in self._providers

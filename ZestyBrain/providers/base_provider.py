@@ -1,45 +1,39 @@
 """
-Zesty OS
-Base AI Provider
-Version: 1.1
-
-Mission 17
-Updated Interface
+Base Provider Interface
+Production interface for all LLM providers used by Zesty OS.
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
+from typing import Any
 
 
 class BaseProvider(ABC):
+    """
+    Every provider must implement this interface.
+    """
+
+    name: str = "base"
 
     @abstractmethod
-    def generate(self, prompt: str) -> dict:
+    def generate(
+        self,
+        prompt: str,
+        *,
+        system_prompt: str | None = None,
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+        **kwargs: Any,
+    ) -> str:
         """
-        Generate a response from the AI provider.
+        Generate a response from the provider.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def health(self) -> dict:
+    def is_available(self) -> bool:
         """
-        Return provider health information.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def supports_vision(self) -> bool:
-        """
-        Return True if provider supports image understanding.
+        Returns True if the provider is ready for inference.
         """
         raise NotImplementedError
-
-    @abstractmethod
-    def provider_name(self) -> str:
-        """
-        Return provider name.
-        """
-        raise NotImplementedError
-
-
-if __name__ == "__main__":
-    print("BaseProvider Interface Ready")
