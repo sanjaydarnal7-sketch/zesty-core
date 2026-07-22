@@ -28,7 +28,20 @@ class LearningEngine:
         result = LearningResult()
         lower = text.lower()
 
-        if any(x in lower for x in ["haha", "lol", "thanks", "thank you", "ok", "okay"]):
+        if any(x in lower for x in [
+            "haha",
+            "lol",
+            "thanks",
+            "thank you",
+            "ok",
+            "okay",
+            "good morning",
+            "good night",
+            "good evening",
+            "hello",
+            "hi",
+            "hey",
+        ]):
             result.ignored = True
             return result
 
@@ -62,6 +75,21 @@ class LearningEngine:
                         confidence=0.98,
                     )
                 )
+
+        m = re.search(
+            r"(?:my goal is|i want to|i'm building|i am building|working on)\s+(.+)",
+            text,
+            re.IGNORECASE,
+        )
+
+        if m:
+            result.goals.append(
+                Fact(
+                    type="goal",
+                    value=m.group(1).strip(),
+                    confidence=0.97,
+                )
+            )
 
         if any(x in lower for x in [
             "today",

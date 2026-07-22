@@ -69,6 +69,10 @@ class FactStore:
                 """
                 SELECT category,key,value
                 FROM facts
+                ORDER BY
+                    category,
+                    key,
+                    rowid
                 """
             )
 
@@ -83,3 +87,31 @@ class FactStore:
             )
 
             conn.commit()
+
+
+    def exists(
+        self,
+        category: str,
+        key: str,
+        value: str,
+    ) -> bool:
+
+        with self._connect() as conn:
+
+            cursor = conn.execute(
+                """
+                SELECT 1
+                FROM facts
+                WHERE category=?
+                  AND key=?
+                  AND value=?
+                LIMIT 1
+                """,
+                (
+                    category,
+                    key,
+                    value,
+                ),
+            )
+
+            return cursor.fetchone() is not None

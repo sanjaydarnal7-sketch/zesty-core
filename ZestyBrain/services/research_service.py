@@ -8,12 +8,17 @@ class ResearchService:
     """
 
     SEARCH_URL = "https://lite.duckduckgo.com/lite/"
+    MAX_RESULTS = 4
 
     HEADERS = {
         "User-Agent": (
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
         )
     }
+
+
+    def is_available(self) -> bool:
+        return True
 
     def search(self, query: str) -> str:
         print(f"\n[🚀 DEEP SEARCH]: {query}")
@@ -35,10 +40,16 @@ class ResearchService:
                 re.DOTALL,
             )
 
-            cleaned = [
-                re.sub(r"<[^>]+>", "", snippet).strip()
-                for snippet in snippets[:4]
-            ]
+            cleaned = []
+
+            for snippet in snippets[: self.MAX_RESULTS]:
+                value = re.sub(r"<[^>]+>", "", snippet).strip()
+
+                if value:
+                    cleaned.append(value)
+
+            if not cleaned:
+                return ""
 
             return "\n".join(f"• {item}" for item in cleaned)
 

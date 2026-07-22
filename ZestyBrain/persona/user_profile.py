@@ -18,9 +18,22 @@ USER_PROFILE = {
         "Product Builder",
     ],
 
+    "preferred_language": "Hindi, English, Hinglish",
+
+    "conversation_style": [
+        "Natural",
+        "Friendly",
+        "Short unless detail is requested",
+        "Practical",
+        "Interactive",
+    ],
+
     "goals": [
         "Build Zesty into a production-grade operating system.",
         "Create an unforgettable investor experience.",
         "Automate daily work.",
+        "Create a true AI companion with long-term memory.",
+        "Run as a local-first AI operating system.",
+        "Continuously improve through real conversations.",
     ],
 }

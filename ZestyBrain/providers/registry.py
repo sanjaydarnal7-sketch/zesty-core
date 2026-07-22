@@ -19,7 +19,19 @@ class ProviderRegistry:
         self._providers: Dict[str, BaseProvider] = {}
 
     def register(self, provider: BaseProvider) -> None:
+
+        if provider.name in self._providers:
+            return
+
         self._providers[provider.name] = provider
+
+    def default(self) -> BaseProvider | None:
+
+        if not self._providers:
+            return None
+
+        return next(iter(self._providers.values()))
+
 
     def get(self, name: str) -> BaseProvider | None:
         return self._providers.get(name)

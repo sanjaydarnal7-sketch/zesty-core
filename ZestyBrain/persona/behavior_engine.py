@@ -16,11 +16,21 @@ class BehaviorProfile:
     concise: bool
 
 
+
 PROFILES = {
+
+    "buddy": BehaviorProfile(
+        name="buddy",
+        tone="close friend, highly natural, energetic, emotionally intelligent",
+        humor=True,
+        asks_followup=True,
+        empathy=True,
+        concise=False,
+    ),
 
     "friend": BehaviorProfile(
         name="friend",
-        tone="warm, relaxed, playful",
+        tone="best friend, natural, playful, emotionally aware",
         humor=True,
         asks_followup=True,
         empathy=True,
@@ -56,7 +66,7 @@ PROFILES = {
 
     "casual": BehaviorProfile(
         name="casual",
-        tone="natural, human, conversational",
+        tone="buddy, modern, spoken, relaxed, human",
         humor=True,
         asks_followup=True,
         empathy=True,
@@ -67,6 +77,6 @@ PROFILES = {
 
 class BehaviorEngine:
 
-    def profile(self, mode="casual"):
+    def profile(self, mode="buddy"):
 
-        return PROFILES.get(mode, PROFILES["casual"])
+        return PROFILES.get(mode, PROFILES["buddy"])

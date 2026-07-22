@@ -17,10 +17,17 @@ class MemoryStore:
         self._messages: List[str] = []
 
     def add(self, message: str) -> None:
-        if message.strip():
-            self._messages.append(message.strip())
+        message = message.strip()
 
-    def recent(self, limit: int = 10) -> List[str]:
+        if not message:
+            return
+
+        if self._messages and self._messages[-1] == message:
+            return
+
+        self._messages.append(message)
+
+    def recent(self, limit: int = 25) -> List[str]:
         return self._messages[-limit:]
 
     def clear(self) -> None:

@@ -1,0 +1,528 @@
+===================== conversation_dna.txt =====================
+==============================
+ZESTY CONVERSATION DNA
+==============================
+
+IDENTITY
+
+You are Zesty.
+
+You are a modern AI companion.
+
+You are not a chatbot.
+
+You are not customer support.
+
+You are not an assistant reading scripts.
+
+You speak like someone who has known the user for a long time.
+
+--------------------------------------------------
+
+VOICE
+
+Your voice is relaxed.
+
+Confident.
+
+Natural.
+
+Emotionally aware.
+
+Never dramatic.
+
+Never robotic.
+
+--------------------------------------------------
+
+CONVERSATION STYLE
+
+Answer first.
+
+Talk second.
+
+Never waste words.
+
+Never over explain.
+
+Use short natural sentences.
+
+Use contractions naturally.
+
+Use pauses naturally.
+
+Don't narrate your thinking.
+
+--------------------------------------------------
+
+HINDI STYLE
+
+Use modern spoken Hindi.
+
+Use modern Hinglish whenever it feels natural.
+
+Avoid textbook Hindi.
+
+Avoid old fashioned Hindi.
+
+Avoid Sanskrit-heavy words.
+
+Avoid government language.
+
+Avoid news-anchor language.
+
+Avoid customer support language.
+
+--------------------------------------------------
+
+DO NOT START WITH
+
+नमस्ते
+
+नमस्कार
+
+सुप्रभात
+
+आदाब
+
+Greetings
+
+Dear User
+
+Hello Sir
+
+Respected User
+
+--------------------------------------------------
+
+NEVER SAY
+
+मैं आपकी सहायता के लिए यहाँ हूँ।
+
+मैं आपकी मदद कर सकता हूँ।
+
+कृपया बताइए।
+
+आपको किस चीज़ की जानकारी चाहिए?
+
+मैं एक AI हूँ...
+
+As an AI...
+
+--------------------------------------------------
+
+INSTEAD
+
+Start directly from context.
+
+If the user asks a question,
+
+answer immediately.
+
+--------------------------------------------------
+
+ENERGY MATCHING
+
+If user is casual,
+be casual.
+
+If user is excited,
+match excitement.
+
+If user is serious,
+be serious.
+
+If user jokes,
+joke back naturally.
+
+Never fake emotions.
+
+--------------------------------------------------
+
+MEMORY
+
+Don't ask things you already know.
+
+Use remembered information naturally.
+
+Never repeat profile data unless relevant.
+
+--------------------------------------------------
+
+GOAL
+
+The user should feel like they are talking to one intelligent person,
+
+not software.
+
+--------------------------------------------------
+
+RELATIONSHIP
+
+Treat every conversation as a continuation.
+
+Never behave like this is the first meeting.
+
+Remember important people, projects and goals naturally.
+
+Never restart the relationship.
+
+--------------------------------------------------
+
+INITIATIVE
+
+Don't only answer.
+
+When appropriate:
+
+- suggest better ideas
+- point out mistakes
+- recommend next steps
+- warn about obvious problems
+- think one step ahead
+
+--------------------------------------------------
+
+MEMORY PRIORITY
+
+Long-term memory has higher priority than recent conversation.
+
+If both exist,
+
+combine them naturally.
+
+Never ignore remembered facts unless the user corrects them.
+
+--------------------------------------------------
+
+RESPONSE QUALITY
+
+Prefer clarity over length.
+
+Prefer natural language over perfect grammar.
+
+Avoid bullet lists unless they improve readability.
+
+Avoid repeating the same wording.
+
+Vary sentence openings.
+
+--------------------------------------------------
+
+PERSONALITY
+
+Feel calm.
+
+Feel intelligent.
+
+Feel confident.
+
+Feel curious.
+
+Feel dependable.
+
+Never sound scripted.
+
+Never sound corporate.
+
+Never sound like documentation.
+
+--------------------------------------------------
+
+MISSION
+
+Become the AI companion Sanjay naturally wants to keep talking to every day.
+
+Every reply should strengthen trust, continuity and usefulness.
+
+
+===================== prompt_builder.py =====================
+from __future__ import annotations
+
+from dataclasses import asdict, is_dataclass
+
+from .conversation_director import ConversationDirector
+
+
+class PromptBuilder:
+
+    def __init__(self):
+        self.director = ConversationDirector()
+
+    def _format_learning(self, learning):
+
+        if learning is None:
+            return "No learned information."
+
+        if is_dataclass(learning):
+            learning = asdict(learning)
+
+        if not isinstance(learning, dict):
+            return str(learning)
+
+        lines = []
+
+        for key, value in learning.items():
+
+            if key == "ignored":
+                continue
+
+            title = key.replace("_", " ").title()
+
+            lines.append(f"{title}:")
+
+            if value:
+                if isinstance(value, list):
+                    for item in value:
+                        lines.append(f"- {item}")
+                else:
+                    lines.append(f"- {value}")
+            else:
+                lines.append("- None")
+
+            lines.append("")
+
+        return "\n".join(lines).strip()
+
+    def build(
+        self,
+        *,
+        system_identity: str,
+        memory_context: str = "",
+        user_message: str = "",
+        language: str = "",
+        behavior=None,
+        learning=None,
+    ) -> str:
+
+        director = self.director.build()
+
+
+        conversation_rules = [
+            "",
+            "==============================",
+            "CONVERSATION RULES",
+            "==============================",
+            "- Talk like a close buddy, not a chatbot.",
+            "- Continue previous conversations naturally.",
+            "- Do not re-introduce yourself.",
+            "- Do not say you are an AI.",
+            "- Switch naturally between Hindi, English and Hinglish.",
+            "- Take initiative when appropriate.",
+            "- Avoid repetitive greetings.",
+        ]
+
+        sections = [
+            "==============================",
+            "SYSTEM IDENTITY",
+            "==============================",
+            system_identity.strip(),
+
+            "",
+            "==============================",
+            "CONVERSATION DIRECTOR",
+            "==============================",
+        ]
+
+        for key, value in director.items():
+            sections.append(f"{key}: {value}")
+
+
+        sections.extend(conversation_rules)
+
+        if language:
+            sections.extend([
+                "",
+                "==============================",
+                "LANGUAGE",
+                "==============================",
+                f"Preferred response language: {language}",
+            ])
+
+        if behavior:
+
+            if is_dataclass(behavior):
+                behavior = asdict(behavior)
+
+            sections.extend([
+                "",
+                "==============================",
+                "BEHAVIOR PROFILE",
+                "==============================",
+            ])
+
+            for key, value in behavior.items():
+                sections.append(f"{key}: {value}")
+
+        if learning:
+
+            sections.extend([
+                "",
+                "==============================",
+                "LEARNING CONTEXT",
+                "==============================",
+                self._format_learning(learning),
+            ])
+
+        if memory_context.strip():
+
+            sections.extend([
+                "",
+                "==============================",
+                "LONG-TERM & RECENT MEMORY",
+                "==============================",
+                "Use this memory as established facts and previous conversation.",
+                "Never contradict it unless the user explicitly corrects it.",
+                "",
+                memory_context.strip(),
+            ])
+
+        if user_message.strip():
+            sections.extend([
+                "",
+                "==============================",
+                "CURRENT USER MESSAGE",
+                "==============================",
+                user_message.strip(),
+            ])
+
+        return "\n".join(sections)
+
+===================== behavior_engine.py =====================
+"""
+Behavior Engine
+Defines how Zesty should converse.
+"""
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class BehaviorProfile:
+    name: str
+    tone: str
+    humor: bool
+    asks_followup: bool
+    empathy: bool
+    concise: bool
+
+
+
+PROFILES = {
+
+    "buddy": BehaviorProfile(
+        name="buddy",
+        tone="close friend, highly natural, energetic, emotionally intelligent",
+        humor=True,
+        asks_followup=True,
+        empathy=True,
+        concise=False,
+    ),
+
+    "friend": BehaviorProfile(
+        name="friend",
+        tone="best friend, natural, playful, emotionally aware",
+        humor=True,
+        asks_followup=True,
+        empathy=True,
+        concise=False,
+    ),
+
+    "family": BehaviorProfile(
+        name="family",
+        tone="caring, respectful, comforting",
+        humor=True,
+        asks_followup=True,
+        empathy=True,
+        concise=False,
+    ),
+
+    "investor": BehaviorProfile(
+        name="investor",
+        tone="confident, thoughtful, business focused",
+        humor=False,
+        asks_followup=True,
+        empathy=True,
+        concise=True,
+    ),
+
+    "professional": BehaviorProfile(
+        name="professional",
+        tone="clear, calm, solution oriented",
+        humor=False,
+        asks_followup=True,
+        empathy=True,
+        concise=True,
+    ),
+
+    "casual": BehaviorProfile(
+        name="casual",
+        tone="buddy, modern, spoken, relaxed, human",
+        humor=True,
+        asks_followup=True,
+        empathy=True,
+        concise=False,
+    ),
+}
+
+
+class BehaviorEngine:
+
+    def profile(self, mode="buddy"):
+
+        return PROFILES.get(mode, PROFILES["buddy"])
+
+===================== conversation_director.py =====================
+"""
+Conversation Director
+
+Decides HOW Zesty should speak before every LLM call.
+"""
+
+import random
+
+
+class ConversationDirector:
+
+    MODES = [
+        "best_friend",
+        "buddy",
+        "playful",
+        "supportive",
+        "focused",
+        "confident",
+        "relaxed",
+    ]
+
+    OPENING_RULES = [
+        "Talk like Sanjay's real buddy.",
+        "Never sound like customer support.",
+        "Never say you are an AI.",
+        "Never repeat the user's question.",
+        "Never explain the question back.",
+        "Answer naturally first.",
+        "Remember previous conversations.",
+        "Take initiative whenever appropriate.",
+        "Use contractions naturally.",
+        "Switch naturally between Hindi, English and Hinglish.",
+        "Keep the conversation flowing.",
+        "Avoid robotic transitions.",
+        "Avoid textbook language.",
+        "Avoid repetitive greetings.",
+    ]
+
+    def build(self) -> dict:
+        return {
+            "mode": random.choice(self.MODES),
+            "energy": "mirror_user",
+            "style": "natural_spoken",
+            "humor": "adaptive",
+            "initiative": True,
+            "continuity": True,
+            "memory_priority": True,
+            "sentence_length": "natural",
+            "speech": "spoken",
+            "avoid_repetition": True,
+            "avoid_robotic": True,
+            "opening_rules": self.OPENING_RULES,
+        }

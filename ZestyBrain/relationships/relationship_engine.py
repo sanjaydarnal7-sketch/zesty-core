@@ -40,15 +40,20 @@ class RelationshipEngine:
 
         person = self.people.get(name.lower())
 
-        if person:
+        if person and note not in person.notes:
             person.notes.append(note)
 
     def add_preference(self, name, pref):
 
         person = self.people.get(name.lower())
 
-        if person:
+        if person and pref not in person.preferences:
             person.preferences.append(pref)
+
+    def exists(self, name):
+
+        return name.lower() in self.people
+
 
     def get(self, name):
 

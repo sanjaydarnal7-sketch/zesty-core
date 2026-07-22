@@ -17,16 +17,31 @@ class MemoryRetriever:
     def conversation(self, limit: int = 5) -> list[str]:
         return self.store.recent(limit)
 
-    def context(self, limit: int = 5) -> str:
+    def context(self, limit: int = 8) -> str:
 
         messages = self.conversation(limit)
 
         if not messages:
             return ""
 
-        lines = ["RECENT CONVERSATION"]
+        cleaned = []
 
-        for i, message in enumerate(messages, start=1):
-            lines.append(f"{i}. {message}")
+        seen = set()
 
-        return "\n".join(lines)
+        for message in messages:
+
+            message = message.strip()
+
+            if not message:
+                continue
+
+            if message in seen:
+                continue
+
+            seen.add(message)
+            cleaned.append(message)
+
+        if not cleaned:
+            return ""
+
+        return "\n".join(cleaned)

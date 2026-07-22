@@ -98,10 +98,28 @@ class ZestyCommercialOS:
                 subprocess.Popen(["open", "-a", "Google Chrome"])
                 return True, "Opening Google Chrome, Boss."
         
-        # रिसर्च ट्रिगर्स का दायरा बढ़ाया
-        research_triggers = ["detail", "info", "search", "strategy", "बताओ", "ढूंढो", "dna", "flavour", "jankari", "who is", "bare mein"]
-        if any(trigger in cleaned for trigger in research_triggers) or len(cleaned.split()) > 3:
+        research_triggers = [
+            "search",
+            "find",
+            "lookup",
+            "research",
+            "detail",
+            "info",
+            "strategy",
+            "who is",
+            "what is",
+            "बताओ",
+            "ढूंढो",
+            "जानकारी",
+            "कौन है",
+            "क्या है",
+            "dna",
+            "flavour",
+        ]
+
+        if any(trigger in cleaned for trigger in research_triggers):
             return False, self.deep_internet_research(text)
+
         return False, ""
 
     def build_dynamic_mood_greeting(self, user_input: str) -> str:
@@ -148,8 +166,21 @@ class ZestyCommercialOS:
         # Legacy personality injection disabled.
         # Chroma knowledge will be re-integrated through ZestyBrain.
 
+        if local_context:
+            system_prompt += (
+                "\n\n"
+                "### RELEVANT MEMORY ###\n"
+                f"{local_context}\n"
+                "### END MEMORY ###\n"
+            )
+
         if web_intel:
-            system_prompt += f"\n[WEB INTEL]: {web_intel}"
+            system_prompt += (
+                "\n\n"
+                "### WEB INTELLIGENCE ###\n"
+                f"{web_intel}\n"
+                "### END WEB ###\n"
+            )
 
         try:
 

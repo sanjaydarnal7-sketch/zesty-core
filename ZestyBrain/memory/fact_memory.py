@@ -70,6 +70,14 @@ class FactMemory:
 
     def remember_event(self, event: str):
 
+        event = event.strip()
+
+        if not event:
+            return
+
+        if event in self.events:
+            return
+
         self.events.append(event)
         self.store.remember("event", "event", event)
 
@@ -82,3 +90,37 @@ class FactMemory:
             "goals": self.goals,
             "events": self.events,
         }
+
+
+    def prompt_context(self) -> str:
+
+        data = self.snapshot()
+
+        lines = []
+
+        if data["identity"]:
+            lines.append("IDENTITY")
+            for k, v in data["identity"].items():
+                lines.append(f"- {k}: {v}")
+
+        if data["relationships"]:
+            lines.append("\nRELATIONSHIPS")
+            for k, vals in data["relationships"].items():
+                lines.append(f"- {k}: {', '.join(vals)}")
+
+        if data["preferences"]:
+            lines.append("\nPREFERENCES")
+            for k, v in data["preferences"].items():
+                lines.append(f"- {k}: {v}")
+
+        if data["goals"]:
+            lines.append("\nGOALS")
+            for k, v in data["goals"].items():
+                lines.append(f"- {k}: {v}")
+
+        if data["events"]:
+            lines.append("\nRECENT EVENTS")
+            for e in data["events"][-10:]:
+                lines.append(f"- {e}")
+
+        return "\n".join(lines)

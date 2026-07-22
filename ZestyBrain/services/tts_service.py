@@ -12,10 +12,17 @@ class TTSService:
 
     OUTPUT_AUDIO = "zesty_reply.mp3"
 
+    DEFAULT_RATE = "+8%"
+    DEFAULT_PITCH = "+10Hz"
+
     VOICES = {
         "english": "en-IN-NeerjaNeural",
         "hinglish": "hi-IN-SwaraNeural",
     }
+
+
+    def is_available(self) -> bool:
+        return True
 
     def cleanup(self) -> None:
         try:
@@ -39,8 +46,8 @@ class TTSService:
         communicate = Communicate(
             text,
             voice,
-            rate="+8%",
-            pitch="+10Hz",
+            rate=self.DEFAULT_RATE,
+            pitch=self.DEFAULT_PITCH,
         )
         await communicate.save(self.OUTPUT_AUDIO)
 
@@ -49,6 +56,9 @@ class TTSService:
         text: str,
         language: str = "hinglish",
     ) -> None:
+
+        if not text or not text.strip():
+            return
 
         self.cleanup()
 

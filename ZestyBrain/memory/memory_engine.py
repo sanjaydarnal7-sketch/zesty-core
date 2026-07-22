@@ -29,6 +29,15 @@ class MemoryEngine:
         elif message.startswith("Zesty:"):
             self.database.add("assistant", message[6:].strip())
 
+
+    def learn(self, text: str) -> None:
+        text = text.strip()
+
+        if not text:
+            return
+
+        self.database.add("learning", text)
+
     def context(self, limit: int = 5) -> str:
         return self.retriever.context(limit)
 

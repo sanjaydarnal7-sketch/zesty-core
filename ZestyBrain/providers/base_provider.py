@@ -10,6 +10,9 @@ from typing import Any
 
 
 class BaseProvider(ABC):
+
+    DEFAULT_TEMPERATURE = 0.7
+    DEFAULT_MAX_TOKENS = 2048
     """
     Every provider must implement this interface.
     """
@@ -37,3 +40,7 @@ class BaseProvider(ABC):
         Returns True if the provider is ready for inference.
         """
         raise NotImplementedError
+
+
+    def model_name(self) -> str:
+        return getattr(self, "default_model", self.name)

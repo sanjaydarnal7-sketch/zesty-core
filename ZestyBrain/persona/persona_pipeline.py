@@ -26,10 +26,13 @@ class PersonaPipeline:
     def process(
         self,
         text: str,
-        mode: str = "casual",
+        mode: str = "buddy",
     ) -> PersonaContext:
 
         language = self.kernel.language(text)
+
+        if mode == "buddy" and language == "hinglish":
+            mode = "buddy"
 
         behavior = self.kernel.profile(mode)
 

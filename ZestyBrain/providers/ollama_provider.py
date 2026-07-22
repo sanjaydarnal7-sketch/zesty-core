@@ -7,6 +7,7 @@ from __future__ import annotations
 import requests
 
 from .base_provider import BaseProvider
+from ZestyBrain.persona.history_sanitizer import HistorySanitizer
 
 
 class OllamaProvider(BaseProvider):
@@ -14,11 +15,12 @@ class OllamaProvider(BaseProvider):
 
     def __init__(
         self,
-        default_model: str = "llama3.2:3b",
+        default_model: str = "qwen2.5:3b",
         host: str = "http://127.0.0.1:11434",
     ) -> None:
         self.default_model = default_model
         self.host = host.rstrip("/")
+        self.history_sanitizer = HistorySanitizer()
 
     def is_available(self) -> bool:
         try:
@@ -31,13 +33,19 @@ class OllamaProvider(BaseProvider):
         prompt: str,
         *,
         system_prompt: str | None = None,
-        temperature: float = 0.7,
+        temperature: float = 0.82,
         max_tokens: int = 2048,
         **kwargs,
     ) -> str:
 
         model = kwargs.get("model", self.default_model)
         history = kwargs.get("messages", [])
+        history = self.history_sanitizer.sanitize(history)
+
+        history = [
+            m for m in history
+            if m.get("content", "").strip()
+        ]
 
         messages = []
 
@@ -65,6 +73,10 @@ class OllamaProvider(BaseProvider):
                 "stream": False,
                 "options": {
                     "temperature": temperature,
+                    "top_p": 0.95,
+                    "top_k": 60,
+                    "repeat_penalty": 1.08,
+                    "num_ctx": 16384,
                     "num_predict": max_tokens,
                 },
             },

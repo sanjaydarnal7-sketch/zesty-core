@@ -5,6 +5,7 @@ from .providers.registry import ProviderRegistry
 from .routing.model_router import ModelRouter
 
 from .persona.persona_engine import PersonaEngine
+from .persona.persona_pipeline import PersonaPipeline
 
 from .memory.memory_engine import MemoryEngine
 from .memory.memory_pipeline import MemoryPipeline
@@ -19,6 +20,7 @@ class RuntimeManager:
         ProviderBootstrap.initialize(self.registry)
 
         self.persona = PersonaEngine()
+        self.persona_pipeline = PersonaPipeline()
 
         self.memory = MemoryEngine()
 
@@ -55,11 +57,25 @@ class RuntimeManager:
 
         self.pipeline.process(prompt)
 
+        persona_context = self.persona_pipeline.process(prompt)
+
         memory_context = self.memory.context()
+
+        fact_context = self.facts.prompt_context()
+
+        if fact_context.strip():
+
+            if memory_context.strip():
+                memory_context += "\n\n"
+
+            memory_context += fact_context
 
         persona_prompt = self.persona.build_system_prompt(
             user_prompt=prompt,
             memory_context=memory_context,
+            language=persona_context.language,
+            behavior=persona_context.behavior,
+            learning=persona_context.learning,
         )
 
         if system_prompt:
@@ -89,5 +105,7 @@ class RuntimeManager:
         self.memory.remember(
             f"Zesty: {reply}"
         )
+
+        self.pipeline.process(reply)
 
         return reply

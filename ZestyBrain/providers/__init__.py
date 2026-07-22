@@ -13,4 +13,14 @@ __all__ = [
     "OllamaProvider",
     "ProviderRegistry",
     "ProviderBootstrap",
+    "create_registry",
 ]
+
+
+__version__ = "2.0.0"
+
+
+def create_registry() -> ProviderRegistry:
+    registry = ProviderRegistry()
+    ProviderBootstrap.initialize(registry)
+    return registry

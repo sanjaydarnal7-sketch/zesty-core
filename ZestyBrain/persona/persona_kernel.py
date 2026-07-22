@@ -32,13 +32,32 @@ class PersonaKernel:
 
         return detect(text)
 
-    def profile(self, mode="casual"):
+    def profile(self, mode="buddy"):
 
         return self.behavior.profile(mode)
 
     def classify(self, text: str):
 
         return self.learning.classify(text)
+
+    def conversation_context(
+        self,
+        text: str,
+        mode: str = "buddy",
+    ):
+
+        language = self.language(text)
+
+        behavior = self.profile(mode)
+
+        learning = self.classify(text)
+
+        return {
+            "language": language,
+            "behavior": behavior,
+            "learning": learning,
+        }
+
 
     def remember_person(
         self,

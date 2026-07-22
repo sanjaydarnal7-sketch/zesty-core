@@ -27,12 +27,14 @@ class ModelRouter:
         intent = self.classifier.classify(prompt)
 
         model_map = {
-            "conversation": "llama3.2:3b",
-            "coding": "qwen2.5:7b-instruct",
+            "conversation": "qwen2.5:3b",
+            "coding": "qwen2.5:3b",
             "reasoning": "deepseek-r1:8b",
         }
 
-        model = model_map.get(intent, "llama3.2:3b")
+        model = model_map.get(intent, "qwen2.5:3b")
+
+        model = kwargs.get("model", model)
 
         return self.provider.generate(
             prompt=prompt,

@@ -42,6 +42,9 @@ class MemoryPipeline:
             f"User: {text}"
         )
 
+        # Learn from the conversation immediately
+        self.memory.learn(text)
+
         # Identity facts
         for fact in result.identities:
 

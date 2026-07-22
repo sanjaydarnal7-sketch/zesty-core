@@ -14,6 +14,14 @@ class ProviderBootstrap:
     Bootstraps the provider registry.
     """
 
+    _initialized = False
+
     @staticmethod
     def initialize(registry: ProviderRegistry) -> None:
+
+        if ProviderBootstrap._initialized:
+            return
+
         registry.register(OllamaProvider())
+
+        ProviderBootstrap._initialized = True
