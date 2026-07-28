@@ -13,10 +13,6 @@ import requests
 from edge_tts import Communicate
 from chromadb import EmbeddingFunction, Documents, Embeddings
 import chromadb
-from ZestyBrain.runtime_manager import RuntimeManager
-from ZestyBrain.services.weather_service import WeatherService
-from ZestyBrain.services.research_service import ResearchService
-from ZestyBrain.services.tts_service import TTSService
 
 
 logging.getLogger('wsgi').setLevel(logging.ERROR)
@@ -156,15 +152,9 @@ class ZestyCommercialOS:
 
     def call_llm(self, user_prompt: str, local_context: str, web_intel: str) -> tuple:
 
-        system_prompt = (
-            "At the end of every reply append exactly one tag in the form: [TARGET_PANEL: panel_name].\n"
-            "Allowed panels: panelSocial, panelFlavour, panelFamily, "
-            "panelCraftsmen, panelDriver, panelRecipe, panelHelp, "
-            "panelSearch, CLOSE, chat."
-        )
+        system_prompt = ""
 
         # Legacy personality injection disabled.
-        # Chroma knowledge will be re-integrated through ZestyBrain.
 
         if local_context:
             system_prompt += (
