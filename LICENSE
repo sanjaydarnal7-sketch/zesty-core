@@ -1,11 +1,73 @@
 Copyright (c) 2026 Sanjay Darnal. All Rights Reserved.
 
-This software and associated documentation files (the "Software") are the 
-exclusive property of Sanjay Darnal.
+Zesty OS Proprietary License
 
-No part of this Software may be copied, modified, distributed, 
-sublicensed, or used in any form without the prior written permission 
-of the copyright holder.
+This software, including all source code, documentation, designs, 
+architecture, memory systems, voice pipelines, persona engines, 
+and any related materials (collectively, the "Software"), is the 
+exclusive intellectual property of Sanjay Darnal ("Copyright Holder").
 
-Unauthorized use, reproduction, or distribution of this Software 
-is strictly prohibited and may result in legal action.
+1. Ownership
+   The Software is proprietary and confidential. All rights, title, 
+   and interest in and to the Software, including all intellectual 
+   property rights, remain solely with the Copyright Holder.
+
+2. Restrictions
+   You may not, without the prior express written permission of the 
+   Copyright Holder:
+
+   - Copy, reproduce, or distribute the Software in any form
+   - Modify, adapt, translate, or create derivative works based on 
+     the Software
+   - Reverse engineer, decompile, disassemble, or attempt to discover 
+     the source code of the Software
+   - Remove, alter, or obscure any proprietary notices, labels, or 
+     marks on the Software
+   - Use the Software for any commercial purpose without authorization
+   - Sublicense, rent, lease, lend, or transfer the Software to any 
+     third party
+   - Use the name "Zesty OS", "Zesty", or any related trademarks, 
+     logos, or branding without prior written consent
+
+3. Trademark Notice
+   "Zesty OS" and related names are trademarks of Sanjay Darnal. 
+   No rights to use these trademarks are granted under this license. 
+   Any unauthorized use of the trademarks is strictly prohibited.
+
+4. No License Granted
+   Except as expressly stated in a separate written agreement signed 
+   by the Copyright Holder, no license, right, or interest is granted 
+   to any person or entity under this notice, whether by implication, 
+   estoppel, or otherwise.
+
+5. Disclaimer of Warranty
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, 
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES 
+   OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND 
+   NONINFRINGEMENT. THE COPYRIGHT HOLDER SHALL NOT BE LIABLE FOR 
+   ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM THE USE OR 
+   INABILITY TO USE THE SOFTWARE.
+
+6. Limitation of Liability
+   In no event shall the Copyright Holder be liable for any indirect, 
+   incidental, special, consequential, or punitive damages, including 
+   but not limited to loss of profits, data, or business opportunities, 
+   even if advised of the possibility of such damages.
+
+7. Governing Law
+   This notice shall be governed by and construed in accordance with 
+   the laws of India. Any disputes arising out of or in connection 
+   with this notice shall be subject to the exclusive jurisdiction 
+   of the courts in Goa, India.
+
+8. Contact
+   For licensing inquiries, permissions, or commercial use, please 
+   contact:
+
+   Sanjay Darnal
+   Email: sanjaydarnal7@gmail.com
+   Location: Goa, India
+
+Unauthorized use, reproduction, modification, or distribution of 
+this Software is strictly prohibited and may result in civil and 
+criminal legal action.
