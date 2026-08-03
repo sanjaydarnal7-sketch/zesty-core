@@ -1,0 +1,51 @@
+{
+  "name": "Zesty",
+  "description": "An intelligent AI Operating System that collaborates, learns, remembers, and helps users build, automate, and grow.",
+  "version": "0.22.0",
+  "url": "<RUNTIME_ENDPOINT>",
+  "protocolVersion": "0.3.0",
+  "preferredTransport": "JSONRPC",
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false,
+    "stateTransitionHistory": false
+  },
+  "defaultInputModes": [
+    "text/plain"
+  ],
+  "defaultOutputModes": [
+    "text/plain"
+  ],
+  "skills": [
+    {
+      "id": "persona:memory",
+      "name": "Memory",
+      "description": "Cross-session memory — store, retrieve, and search memories with provider-pluggable backend (local JSON lines default, Mem0/Zep optional)",
+      "tags": [
+        "persona",
+        "cognition"
+      ],
+      "inputModes": [
+        "text/plain"
+      ],
+      "outputModes": [
+        "text/plain"
+      ]
+    },
+    {
+      "id": "persona:voice",
+      "name": "Voice",
+      "description": "Text-to-speech voice synthesis — give your persona a real voice via ElevenLabs (verified), with experimental OpenAI TTS and Qwen3-TTS support",
+      "tags": [
+        "persona",
+        "expression"
+      ],
+      "inputModes": [
+        "text/plain"
+      ],
+      "outputModes": [
+        "text/plain"
+      ]
+    }
+  ]
+}

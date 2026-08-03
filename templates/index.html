@@ -154,6 +154,288 @@
   @keyframes scanLine { 0% { top: 0%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
   .laser-scanner { position: absolute; left: 0; width: 100%; height: 2px; background: var(--cyan); box-shadow: 0 0 10px 2px var(--cyan); display: none; z-index: 10; }
   .scanning .laser-scanner { display: block; animation: scanLine 1.5s linear infinite; }
+
+  /* ==================================================
+     PROFILE VAULT — Jarvis-style stacked folders
+     ================================================== */
+  #panelSocial { width: 460px; height: 420px; }
+  #socialDetailView.vault-hidden { display: none; }
+
+  #socialVaultView {
+    position: relative;
+    min-height: 280px;
+    perspective: 900px;
+    overflow: visible;
+  }
+
+  .vault-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    font-size: 8px;
+    letter-spacing: 0.14em;
+    color: rgba(0, 240, 255, 0.55);
+  }
+
+  .vault-back-btn {
+    background: rgba(0, 240, 255, 0.06);
+    border: 1px solid rgba(0, 240, 255, 0.25);
+    color: var(--cyan);
+    font-family: inherit;
+    font-size: 8px;
+    letter-spacing: 0.12em;
+    padding: 4px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+  }
+  .vault-back-btn:hover { background: rgba(0, 240, 255, 0.15); box-shadow: 0 0 12px rgba(0, 240, 255, 0.25); }
+
+  #socialVaultFolders {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px 14px;
+    justify-content: center;
+    align-items: flex-end;
+    padding: 12px 4px 20px;
+    min-height: 240px;
+  }
+
+  .vault-folder {
+    position: relative;
+    width: 118px;
+    cursor: pointer;
+    transform-style: preserve-3d;
+    transition: transform 0.45s cubic-bezier(0.23, 1, 0.32, 1), filter 0.35s ease;
+    --folder-accent: #00F0FF;
+    --folder-glow: rgba(0, 240, 255, 0.4);
+    transform: translateY(calc(var(--stack-i, 0) * 4px)) rotateX(8deg);
+  }
+
+  .vault-folder-stack { position: relative; height: 88px; transform-style: preserve-3d; }
+
+  .vault-folder-layer {
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    height: 72px;
+    border-radius: 4px 8px 6px 6px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: linear-gradient(145deg, rgba(12, 22, 28, 0.95), rgba(4, 8, 12, 0.9));
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
+  .vault-folder-layer.l3 { top: 10px; transform: translateZ(-16px) scale(0.92); opacity: 0.45; }
+  .vault-folder-layer.l2 { top: 5px; transform: translateZ(-8px) scale(0.96); opacity: 0.65; }
+  .vault-folder-layer.l1 { top: 0; transform: translateZ(0); }
+
+  .vault-folder-face {
+    position: absolute;
+    inset: 0;
+    border-radius: 4px 10px 8px 8px;
+    border: 1px solid color-mix(in srgb, var(--folder-accent) 55%, transparent);
+    background: linear-gradient(160deg, rgba(8, 18, 24, 0.92) 0%, rgba(2, 6, 10, 0.95) 100%);
+    box-shadow: 0 0 20px var(--folder-glow), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 10px;
+    transform: translateZ(4px);
+    overflow: hidden;
+  }
+  .vault-folder-face::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 40%;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--folder-accent) 18%, transparent), transparent);
+    pointer-events: none;
+  }
+
+  .vault-folder-tab {
+    position: absolute;
+    top: -8px;
+    left: 10px;
+    width: 42px;
+    height: 12px;
+    border-radius: 4px 4px 0 0;
+    background: color-mix(in srgb, var(--folder-accent) 35%, rgba(8, 18, 24, 0.95));
+    border: 1px solid color-mix(in srgb, var(--folder-accent) 50%, transparent);
+    border-bottom: none;
+  }
+
+  .vault-folder-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--folder-accent);
+    text-shadow: 0 0 10px var(--folder-glow);
+    z-index: 1;
+  }
+  .vault-folder-count {
+    font-size: 7px;
+    color: rgba(216, 246, 248, 0.45);
+    margin-top: 3px;
+    z-index: 1;
+  }
+
+  .vault-photo-fan {
+    position: absolute;
+    top: -28px;
+    left: 50%;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+    z-index: 20;
+  }
+  .vault-fan-photo {
+    position: absolute;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 2px solid var(--folder-accent);
+    object-fit: cover;
+    box-shadow: 0 0 12px var(--folder-glow);
+    opacity: 0;
+    transform: translate(-50%, 0) scale(0.5) rotate(calc((var(--fan-i, 0) - 1) * 0deg));
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition-delay: calc(var(--fan-i, 0) * 40ms);
+  }
+  .vault-folder:hover .vault-fan-photo {
+    opacity: 1;
+    transform: translate(-50%, -8px) scale(1) rotate(calc((var(--fan-i, 0) - 1) * 18deg - 18deg))
+      translateX(calc((var(--fan-i, 0) - 1) * 22px));
+  }
+  .vault-folder:hover {
+    transform: translateY(-6px) scale(1.04) rotateX(4deg);
+    filter: drop-shadow(0 12px 28px var(--folder-glow));
+    z-index: 30;
+  }
+
+  .vault-profile-cards {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 8px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    z-index: 25;
+    min-width: 110px;
+  }
+  .vault-folder:hover .vault-profile-cards {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .vault-profile-card {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    background: rgba(6, 14, 18, 0.92);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    color: #e0f7fa;
+    transition: all 0.25s ease;
+    backdrop-filter: blur(8px);
+  }
+  .vault-profile-card:hover {
+    border-color: var(--cyan);
+    box-shadow: 0 0 14px rgba(0, 240, 255, 0.25);
+    transform: translateX(4px);
+  }
+  .vault-card-thumb { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; border: 1px solid rgba(0, 240, 255, 0.35); }
+  .vault-card-name { font-size: 8px; font-weight: 600; flex: 1; text-align: left; }
+  .vault-card-platform { font-size: 6px; color: rgba(0, 240, 255, 0.5); }
+
+  .vault-folder.is-scanning .vault-folder-face {
+    animation: vaultPulse 0.5s ease infinite;
+    border-color: #00E676;
+    box-shadow: 0 0 24px rgba(0, 230, 118, 0.5);
+  }
+  @keyframes vaultPulse {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.35); }
+  }
+
+  .vault-folder.is-found {
+    transform: translateY(-18px) scale(1.12) rotateX(0deg) !important;
+    z-index: 50 !important;
+    filter: drop-shadow(0 0 30px var(--folder-glow));
+    animation: vaultPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes vaultPop {
+    0% { transform: translateY(0) scale(1); }
+    60% { transform: translateY(-22px) scale(1.15); }
+    100% { transform: translateY(-18px) scale(1.12); }
+  }
+
+  .vault-profile-card.is-popped {
+    animation: cardPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    border-color: var(--coral) !important;
+    box-shadow: 0 0 20px rgba(255, 69, 0, 0.5);
+  }
+  @keyframes cardPop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+    100% { transform: scale(1); }
+  }
+
+  .vault-folder.is-missed { opacity: 0.35; filter: grayscale(0.6); }
+  .vault-folder.is-deleting { animation: vaultDissolve 0.7s ease forwards; }
+  .vault-profile-card.is-deleting { animation: vaultDissolve 0.7s ease forwards; }
+  @keyframes vaultDissolve {
+    0% { opacity: 1; transform: scale(1); filter: blur(0); }
+    100% { opacity: 0; transform: scale(0.6) translateY(-20px); filter: blur(6px); }
+  }
+
+  .vault-profile-card.is-updating::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, transparent, rgba(0, 240, 255, 0.35), transparent);
+    animation: scanLine 1.2s linear infinite;
+    border-radius: 4px;
+    pointer-events: none;
+  }
+
+  #socialVaultScanLine {
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #00E676, transparent);
+    box-shadow: 0 0 16px #00E676;
+    top: 0;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 100;
+  }
+  #socialVaultScanLine.is-active {
+    opacity: 1;
+    animation: vaultScanSweep 1.8s ease-in-out infinite;
+  }
+  @keyframes vaultScanSweep {
+    0% { top: 0; }
+    100% { top: 100%; }
+  }
+
+  .vault-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: rgba(0, 240, 255, 0.45);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+  }
+  .vault-empty-icon { font-size: 28px; margin-bottom: 12px; color: var(--cyan); text-shadow: 0 0 20px var(--cyan); }
+  .vault-empty-sub { font-size: 8px; margin-top: 8px; opacity: 0.6; }
 </style>
 </head>
 <body>
@@ -190,23 +472,40 @@
         <span style="font-size:8px; color:rgba(0,240,255,0.6); letter-spacing:1px;">DATA SOURCE: <span id="radar-source" style="color:#fff;">AWAITING QUERY...</span></span>
         <span style="font-size:8px; color:#00E676; letter-spacing:1px;" id="radar-status">IDLE</span>
       </div>
-      <div style="display: grid; grid-template-columns: 1fr 85px; gap: 14px; align-items: center; margin-bottom: 10px;">
-        <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #e0f7fa; line-height: 1.8;">
-          <div style="display:flex; justify-content:space-between;"><span style="color: rgba(216,246,248,0.45);">FOLLOWER DELTA</span><span style="font-weight:700;">+128</span></div>
-          <div style="display:flex; justify-content:space-between; margin-bottom: 6px;"><span style="color: rgba(216,246,248,0.45);">ENGAGEMENT RATE</span><span style="font-weight:700;">4.87%</span></div>
-          <div class="zesty-progress-vessel"><div class="zesty-progress-fill"></div></div>
+
+      <!-- Level 1: Stacked Folders Vault View -->
+      <div id="socialVaultView" hidden data-gesture-zone="profiles-vault">
+        <div class="vault-toolbar">
+          <span id="socialVaultMeta">PROFILE VAULT // STANDBY</span>
+          <button type="button" class="vault-back-btn" id="vaultBackBtn" onclick="ZestyProfilesVault && ZestyProfilesVault.showDetail()">DETAIL VIEW</button>
         </div>
-        <div id="social-photo-frame" style="position: relative; width: 85px; height: 95px; border: 1px solid rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.03); border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
-          <img id="socialTargetPhoto" src="" style="display: none; width: 100%; height: 100%; object-fit: cover; filter: contrast(1.25) brightness(0.95) sepia(1) hue-rotate(145deg); mix-blend-mode: screen;">
-          <div class="laser-scanner"></div> <!-- VONDA MAX LASER -->
-          <div style="position: absolute; bottom: 4px; display: flex; gap: 3px; z-index: 5;">
-            <span style="font-size: 7px; padding: 1px 3px; background: rgba(6,18,28,0.85); border: 1px solid rgba(0,240,255,0.3); color: rgba(0,240,255,0.65);">IG</span>
+        <div id="socialVaultScanLine"></div>
+        <div id="socialVaultFolders"></div>
+      </div>
+
+      <!-- Level 2: Full Profile Detail (existing Social Panel) -->
+      <div id="socialDetailView">
+        <div style="display: grid; grid-template-columns: 1fr 85px; gap: 14px; align-items: center; margin-bottom: 10px;">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #e0f7fa; line-height: 1.8;">
+            <div style="display:flex; justify-content:space-between;"><span style="color: rgba(216,246,248,0.45);">FOLLOWER DELTA</span><span id="socialFollowerDelta" style="font-weight:700;">+128</span></div>
+            <div style="display:flex; justify-content:space-between; margin-bottom: 6px;"><span style="color: rgba(216,246,248,0.45);">ENGAGEMENT RATE</span><span id="socialEngagementRate" style="font-weight:700;">4.87%</span></div>
+            <div class="zesty-progress-vessel"><div class="zesty-progress-fill"></div></div>
+          </div>
+          <div id="social-photo-frame" style="position: relative; width: 85px; height: 95px; border: 1px solid rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.03); border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+            <img id="socialTargetPhoto" src="" style="display: none; width: 100%; height: 100%; object-fit: cover; filter: contrast(1.25) brightness(0.95) sepia(1) hue-rotate(145deg); mix-blend-mode: screen;">
+            <div class="laser-scanner"></div>
+            <div style="position: absolute; bottom: 4px; display: flex; gap: 3px; z-index: 5;">
+              <span id="socialPlatformBadge" style="font-size: 7px; padding: 1px 3px; background: rgba(6,18,28,0.85); border: 1px solid rgba(0,240,255,0.3); color: rgba(0,240,255,0.65);">IG</span>
+            </div>
           </div>
         </div>
-      </div>
-      <hr style="border: none; border-top: 1px solid rgba(0, 240, 255, 0.15); margin: 10px 0;">
-      <div id="socialContentArea" style="font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.6; color: #e0f7fa;">
-        <span style="color: rgba(0, 240, 255, 0.45)">// ZESTY INTELLIGENCE SYSTEMS ONLINE... AWAITING CORE SYNC.</span>
+        <hr style="border: none; border-top: 1px solid rgba(0, 240, 255, 0.15); margin: 10px 0;">
+        <div id="socialContentArea" style="font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.6; color: #e0f7fa;">
+          <span style="color: rgba(0, 240, 255, 0.45)">// ZESTY INTELLIGENCE SYSTEMS ONLINE... AWAITING CORE SYNC.</span>
+        </div>
+        <div style="margin-top:10px; text-align:right;">
+          <button type="button" class="vault-back-btn" onclick="ZestyProfilesVault && ZestyProfilesVault.showVault()">◈ OPEN VAULT</button>
+        </div>
       </div>
     </div>
   </div>
@@ -418,6 +717,18 @@
   // threw "sendToZestyBackend is not defined" and the console
   // send button / Enter key did nothing at all.
   // ==========================================
+  function getZestySessionId() {
+    const storageKey = 'zesty_session_id';
+    let sessionId = localStorage.getItem(storageKey);
+    if (!sessionId) {
+      sessionId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? 'zesty-' + crypto.randomUUID()
+        : 'zesty-' + Date.now();
+      localStorage.setItem(storageKey, sessionId);
+    }
+    return sessionId;
+  }
+
   async function sendToZestyBackend(commandText) {
     if (!commandText || !commandText.trim()) return;
 
@@ -428,7 +739,10 @@
       const response = await fetch('/ask_hermes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_input: commandText })
+        body: JSON.stringify({
+          user_input: commandText,
+          session_id: getZestySessionId()
+        })
       });
 
       if (!response.ok) throw new Error(`Backend responded with status ${response.status}`);
@@ -530,22 +844,128 @@
       const dockItem = document.getElementById(`dock-${panelId}`); if (dockItem) dockItem.remove();
   }
 
+  // ==========================================
+  // ZESTY EVENT BUS — panel routing & Deep Probe hooks
+  // ==========================================
+  const ZestyEventBus = {
+    _listeners: {},
+    on(eventName, handler) {
+      if (!this._listeners[eventName]) this._listeners[eventName] = [];
+      this._listeners[eventName].push(handler);
+      return () => { this._listeners[eventName] = (this._listeners[eventName] || []).filter(h => h !== handler); };
+    },
+    emit(eventName, payload) {
+      (this._listeners[eventName] || []).forEach(handler => {
+        try { handler(payload); } catch (err) { console.error(`[ZestyEventBus] ${eventName}:`, err); }
+      });
+    }
+  };
+
+  const SOCIAL_PLATFORM_BADGES = { instagram: 'IG', linkedin: 'IN', x: 'X', twitter: 'X', facebook: 'FB', web: 'WEB' };
+
+  function applySocialProfileMetrics(socialProfile) {
+    const followerEl = document.getElementById('socialFollowerDelta');
+    const engagementEl = document.getElementById('socialEngagementRate');
+    const badgeEl = document.getElementById('socialPlatformBadge');
+    if (!socialProfile) return;
+
+    if (followerEl) {
+      followerEl.innerText = socialProfile.follower_delta
+        || (socialProfile.followers ? `+${socialProfile.followers}` : '+—');
+    }
+    if (engagementEl) {
+      engagementEl.innerText = socialProfile.engagement_rate
+        || (socialProfile.connections ? `${socialProfile.connections} conn` : '—');
+    }
+    if (badgeEl && socialProfile.platform) {
+      badgeEl.innerText = SOCIAL_PLATFORM_BADGES[socialProfile.platform] || socialProfile.platform.toUpperCase().slice(0, 3);
+    }
+  }
+
+  function populateSocialPanelFromProbe(data) {
+    const socialProfile = data.social_profile || data.deep_probe || null;
+    const contentArea = document.getElementById('socialContentArea');
+    const hudImg = document.getElementById('socialTargetPhoto');
+    const photoFrame = document.getElementById('social-photo-frame');
+    const sourceLabel = document.getElementById('radar-source');
+    const statusLabel = document.getElementById('radar-status');
+    if (!contentArea) return;
+
+    const panelText = (socialProfile && socialProfile.panel_text)
+      ? socialProfile.panel_text
+      : (data.voice_text || '');
+    const imageUrl = data.target_image_url
+      || (socialProfile && socialProfile.profile_image_url)
+      || null;
+
+    applySocialProfileMetrics(socialProfile);
+
+    if (photoFrame) photoFrame.classList.add('scanning');
+    if (sourceLabel) { sourceLabel.style.color = 'var(--cyan)'; sourceLabel.innerText = 'DEEP PROBE SCANNING...'; }
+    if (statusLabel) { statusLabel.style.color = '#00E676'; statusLabel.innerText = 'ACTIVE'; }
+    contentArea.innerHTML = "<span style='color:var(--cyan)'>// DEEP PROBE ENGINE — EXTRACTING SOCIAL VECTORS...</span>";
+    if (hudImg) hudImg.style.display = 'none';
+
+    setTimeout(() => {
+      if (hudImg) {
+        hudImg.src = imageUrl || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80';
+        hudImg.style.display = 'block';
+      }
+      if (photoFrame) photoFrame.classList.remove('scanning');
+      if (sourceLabel) {
+        sourceLabel.style.color = '#FF4500';
+        const imgSource = socialProfile && socialProfile.profile_image_source;
+        const imgConf = socialProfile && socialProfile.profile_image_confidence;
+        if (imgSource) {
+          sourceLabel.innerText = `${imgSource.toUpperCase()} PHOTO (${imgConf || 'low'})`;
+        } else {
+          sourceLabel.innerText = socialProfile && socialProfile.platform
+            ? `${socialProfile.platform.toUpperCase()} / WEB MATCH`
+            : 'INSTAGRAM / LINKEDIN MATCH';
+        }
+      }
+      if (statusLabel) { statusLabel.style.color = '#FF4500'; statusLabel.innerText = 'LOCKED'; }
+      triggerZestyTypewriter(contentArea, panelText);
+      ZestyEventBus.emit('deep-probe:populated', { socialProfile, panelText, imageUrl });
+    }, 1200);
+  }
+
+  ZestyEventBus.on('deep-probe:ready', (data) => {
+    if (data.ui_mode && data.ui_mode.startsWith('vault')) return;
+    populateSocialPanelFromProbe(data);
+    if (typeof ZestyProfilesVault !== 'undefined') ZestyProfilesVault.showDetail();
+    const panel = document.getElementById('panelSocial');
+    if (panel) {
+      setTimeout(() => { panel.classList.add('is-visible'); focusZestyPanel('panelSocial'); }, 50);
+    }
+  });
+
   function handleZestyOSResponse(data) {
     if (!data) return; throbEnergy = 1.6;
 
     const openTag = data.open_panel ? String(data.open_panel).trim() : "chat";
 
-    // 🔧 REPAIR: main.py returns open_panel: "CLOSE" on stop/ruko/cancel.
-    // This value previously matched nothing in the whitelist below and
-    // fell through to the "panelSearch" default, so saying "stop" incorrectly
-    // opened the search panel instead of closing whatever was open.
     if (openTag === "CLOSE") {
       document.querySelectorAll('.panel').forEach(p => p.classList.remove('is-visible'));
       return;
     }
 
+    // Profile Vault UI modes take priority over generic panel routing
+    if (typeof ZestyProfilesVault !== 'undefined' && ZestyProfilesVault.handleResponse(data)) {
+      if (data.voice_text) {
+        const searchBody = document.getElementById('searchBriefBody');
+        if (searchBody) triggerZestyTypewriter(searchBody, data.voice_text);
+      }
+      return;
+    }
+
     let targetPanelId = "panelSearch";
     if (["panelSocial", "panelFlavour", "panelFamily", "panelCraftsmen", "panelSearch", "panelDriver", "panelRecipe", "panelHelp"].includes(openTag)) targetPanelId = openTag;
+
+    if (data.deep_probe || data.social_profile) {
+      ZestyEventBus.emit('deep-probe:ready', data);
+      return;
+    }
 
     const targetPanel = document.getElementById(targetPanelId);
     if (targetPanel) {
@@ -580,5 +1000,6 @@
     else { setTimeout(() => { handleZestyOSResponse({ open_panel: 'panelSearch', voice_text: `Triggering execution global node layer for ${cmd}...` }); }, 150); }
   }
 </script>
+<script src="/assets/zesty_profiles_vault.js"></script>
 </body>
 </html>

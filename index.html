@@ -192,15 +192,15 @@
       </div>
       <div style="display: grid; grid-template-columns: 1fr 85px; gap: 14px; align-items: center; margin-bottom: 10px;">
         <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #e0f7fa; line-height: 1.8;">
-          <div style="display:flex; justify-content:space-between;"><span style="color: rgba(216,246,248,0.45);">FOLLOWER DELTA</span><span style="font-weight:700;">+128</span></div>
-          <div style="display:flex; justify-content:space-between; margin-bottom: 6px;"><span style="color: rgba(216,246,248,0.45);">ENGAGEMENT RATE</span><span style="font-weight:700;">4.87%</span></div>
+          <div style="display:flex; justify-content:space-between;"><span style="color: rgba(216,246,248,0.45);">FOLLOWER DELTA</span><span id="socialFollowerDelta" style="font-weight:700;">+128</span></div>
+          <div style="display:flex; justify-content:space-between; margin-bottom: 6px;"><span style="color: rgba(216,246,248,0.45);">ENGAGEMENT RATE</span><span id="socialEngagementRate" style="font-weight:700;">4.87%</span></div>
           <div class="zesty-progress-vessel"><div class="zesty-progress-fill"></div></div>
         </div>
         <div id="social-photo-frame" style="position: relative; width: 85px; height: 95px; border: 1px solid rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.03); border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
           <img id="socialTargetPhoto" src="" style="display: none; width: 100%; height: 100%; object-fit: cover; filter: contrast(1.25) brightness(0.95) sepia(1) hue-rotate(145deg); mix-blend-mode: screen;">
           <div class="laser-scanner"></div> <!-- VONDA MAX LASER -->
           <div style="position: absolute; bottom: 4px; display: flex; gap: 3px; z-index: 5;">
-            <span style="font-size: 7px; padding: 1px 3px; background: rgba(6,18,28,0.85); border: 1px solid rgba(0,240,255,0.3); color: rgba(0,240,255,0.65);">IG</span>
+            <span id="socialPlatformBadge" style="font-size: 7px; padding: 1px 3px; background: rgba(6,18,28,0.85); border: 1px solid rgba(0,240,255,0.3); color: rgba(0,240,255,0.65);">IG</span>
           </div>
         </div>
       </div>
@@ -418,6 +418,18 @@
   // threw "sendToZestyBackend is not defined" and the console
   // send button / Enter key did nothing at all.
   // ==========================================
+  function getZestySessionId() {
+    const storageKey = 'zesty_session_id';
+    let sessionId = localStorage.getItem(storageKey);
+    if (!sessionId) {
+      sessionId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? 'zesty-' + crypto.randomUUID()
+        : 'zesty-' + Date.now();
+      localStorage.setItem(storageKey, sessionId);
+    }
+    return sessionId;
+  }
+
   async function sendToZestyBackend(commandText) {
     if (!commandText || !commandText.trim()) return;
 
@@ -428,7 +440,10 @@
       const response = await fetch('/ask_hermes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_input: commandText })
+        body: JSON.stringify({
+          user_input: commandText,
+          session_id: getZestySessionId()
+        })
       });
 
       if (!response.ok) throw new Error(`Backend responded with status ${response.status}`);
@@ -530,6 +545,100 @@
       const dockItem = document.getElementById(`dock-${panelId}`); if (dockItem) dockItem.remove();
   }
 
+  // ==========================================
+  // ZESTY EVENT BUS — panel routing & Deep Probe hooks
+  // ==========================================
+  const ZestyEventBus = {
+    _listeners: {},
+    on(eventName, handler) {
+      if (!this._listeners[eventName]) this._listeners[eventName] = [];
+      this._listeners[eventName].push(handler);
+      return () => { this._listeners[eventName] = (this._listeners[eventName] || []).filter(h => h !== handler); };
+    },
+    emit(eventName, payload) {
+      (this._listeners[eventName] || []).forEach(handler => {
+        try { handler(payload); } catch (err) { console.error(`[ZestyEventBus] ${eventName}:`, err); }
+      });
+    }
+  };
+
+  const SOCIAL_PLATFORM_BADGES = { instagram: 'IG', linkedin: 'IN', x: 'X', twitter: 'X', facebook: 'FB', web: 'WEB' };
+
+  function applySocialProfileMetrics(socialProfile) {
+    const followerEl = document.getElementById('socialFollowerDelta');
+    const engagementEl = document.getElementById('socialEngagementRate');
+    const badgeEl = document.getElementById('socialPlatformBadge');
+    if (!socialProfile) return;
+
+    if (followerEl) {
+      followerEl.innerText = socialProfile.follower_delta
+        || (socialProfile.followers ? `+${socialProfile.followers}` : '+—');
+    }
+    if (engagementEl) {
+      engagementEl.innerText = socialProfile.engagement_rate
+        || (socialProfile.connections ? `${socialProfile.connections} conn` : '—');
+    }
+    if (badgeEl && socialProfile.platform) {
+      badgeEl.innerText = SOCIAL_PLATFORM_BADGES[socialProfile.platform] || socialProfile.platform.toUpperCase().slice(0, 3);
+    }
+  }
+
+  function populateSocialPanelFromProbe(data) {
+    const socialProfile = data.social_profile || data.deep_probe || null;
+    const contentArea = document.getElementById('socialContentArea');
+    const hudImg = document.getElementById('socialTargetPhoto');
+    const photoFrame = document.getElementById('social-photo-frame');
+    const sourceLabel = document.getElementById('radar-source');
+    const statusLabel = document.getElementById('radar-status');
+    if (!contentArea) return;
+
+    const panelText = (socialProfile && socialProfile.panel_text)
+      ? socialProfile.panel_text
+      : (data.voice_text || '');
+    const imageUrl = data.target_image_url
+      || (socialProfile && socialProfile.profile_image_url)
+      || null;
+
+    applySocialProfileMetrics(socialProfile);
+
+    if (photoFrame) photoFrame.classList.add('scanning');
+    if (sourceLabel) { sourceLabel.style.color = 'var(--cyan)'; sourceLabel.innerText = 'DEEP PROBE SCANNING...'; }
+    if (statusLabel) { statusLabel.style.color = '#00E676'; statusLabel.innerText = 'ACTIVE'; }
+    contentArea.innerHTML = "<span style='color:var(--cyan)'>// DEEP PROBE ENGINE — EXTRACTING SOCIAL VECTORS...</span>";
+    if (hudImg) hudImg.style.display = 'none';
+
+    setTimeout(() => {
+      if (hudImg) {
+        hudImg.src = imageUrl || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80';
+        hudImg.style.display = 'block';
+      }
+      if (photoFrame) photoFrame.classList.remove('scanning');
+      if (sourceLabel) {
+        sourceLabel.style.color = '#FF4500';
+        const imgSource = socialProfile && socialProfile.profile_image_source;
+        const imgConf = socialProfile && socialProfile.profile_image_confidence;
+        if (imgSource) {
+          sourceLabel.innerText = `${imgSource.toUpperCase()} PHOTO (${imgConf || 'low'})`;
+        } else {
+          sourceLabel.innerText = socialProfile && socialProfile.platform
+            ? `${socialProfile.platform.toUpperCase()} / WEB MATCH`
+            : 'INSTAGRAM / LINKEDIN MATCH';
+        }
+      }
+      if (statusLabel) { statusLabel.style.color = '#FF4500'; statusLabel.innerText = 'LOCKED'; }
+      triggerZestyTypewriter(contentArea, panelText);
+      ZestyEventBus.emit('deep-probe:populated', { socialProfile, panelText, imageUrl });
+    }, 1200);
+  }
+
+  ZestyEventBus.on('deep-probe:ready', (data) => {
+    populateSocialPanelFromProbe(data);
+    const panel = document.getElementById('panelSocial');
+    if (panel) {
+      setTimeout(() => { panel.classList.add('is-visible'); focusZestyPanel('panelSocial'); }, 50);
+    }
+  });
+
   function handleZestyOSResponse(data) {
     if (!data) return; throbEnergy = 1.6;
 
@@ -546,6 +655,11 @@
 
     let targetPanelId = "panelSearch";
     if (["panelSocial", "panelFlavour", "panelFamily", "panelCraftsmen", "panelSearch", "panelDriver", "panelRecipe", "panelHelp"].includes(openTag)) targetPanelId = openTag;
+
+    if (data.deep_probe || data.social_profile) {
+      ZestyEventBus.emit('deep-probe:ready', data);
+      return;
+    }
 
     const targetPanel = document.getElementById(targetPanelId);
     if (targetPanel) {

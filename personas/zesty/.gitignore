@@ -1,0 +1,9 @@
+# OpenPersona runtime files — do not commit to version control
+acn-registration.json
+state.json
+handoff.json
+soul/self-narrative.md
+# Social Contacts runtime files (private relationship data — never export)
+social/contacts.json
+social/contacts.jsonl
+social/.poller-cursor.json

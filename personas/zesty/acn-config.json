@@ -1,0 +1,22 @@
+{
+  "acn_gateway": "https://acn-production.up.railway.app",
+  "owner": "<RUNTIME_OWNER>",
+  "name": "Zesty",
+  "endpoint": "<RUNTIME_ENDPOINT>",
+  "skills": [
+    "persona:memory",
+    "persona:voice"
+  ],
+  "agent_card": "./agent-card.json",
+  "subnet_ids": [
+    "public"
+  ],
+  "wallet_address": "0x4efc908003ea495978d7da7fb94a1129e0bdd03a",
+  "onchain": {
+    "erc8004": {
+      "chain": "base",
+      "identity_contract": "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+      "registration_script": "npx @agentplanet/acn register-onchain"
+    }
+  }
+}
