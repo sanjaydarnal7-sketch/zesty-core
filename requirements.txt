@@ -3,3 +3,8 @@ requests
 edge-tts
 chromadb
 groq
+python-dotenv
+
+# Cloud TTS (Sarvam Bulbul v3):
+#   pip install -r requirements-tts.txt
+#   export SARVAM_API_KEY=your_key

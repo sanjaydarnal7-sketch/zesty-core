@@ -192,7 +192,15 @@ class OpenPersonaPersona:
 
     @staticmethod
     def _normalize_soul_text(text: str) -> str:
-        return text.strip()
+        t = text.strip()
+        # Prevent glued words when markdown blocks are rendered inline in logs.
+        t = re.sub(r"\.([A-Za-z\u0900-\u097F])", r". \1", t)
+        t = re.sub(
+            r"([a-z\u0900-\u097F])(Never|Always|Match|Do not|Reply|Write|Use|Stay)",
+            r"\1 \2",
+            t,
+        )
+        return t
 
     def _load_soul_content(self) -> str:
         """

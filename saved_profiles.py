@@ -167,6 +167,9 @@ class SavedProfilesStore:
     """Chroma-backed store for saved person profiles."""
 
     _LAST_PROBE_META_KEY = "last_deep_probe"
+    _LAST_ACTION_META_KEY = "last_action"
+    _LAST_ACTION_DETAIL_KEY = "last_action_detail"
+    _PROACTIVE_NUDGE_KEY = "proactive_nudge"
 
     def __init__(
         self,
@@ -282,6 +285,10 @@ class SavedProfilesStore:
                     state.current_topic = name
                 state.current_mode = "social_probe"
                 state.user_intent = "profile_research"
+                note = f"Profile in focus: {name}"
+                if note not in state.recent_decisions:
+                    state.recent_decisions.append(note)
+                    state.recent_decisions = state.recent_decisions[-8:]
                 state.touch()
             except Exception:
                 pass
@@ -379,6 +386,136 @@ class SavedProfilesStore:
         data["_saved_profile_source"] = True
         social = self.profile_to_social_payload(data)
         return record, social
+
+    def format_probe_context_for_prompt(self, session_id: str) -> str:
+        """Concise active-profile context for LLM continuity (not full payload)."""
+        probe = self.get_last_probe(session_id)
+        if not probe:
+            return ""
+
+        name = (probe.get("name") or "Unknown").strip()
+        platform = (probe.get("platform") or "web").strip()
+        username = (probe.get("username") or "").strip().lstrip("@")
+        lines = [
+            f"Active profile in focus: {name}",
+            f"Platform: {platform}",
+        ]
+        if username:
+            lines.append(f"Username: @{username}")
+        if probe.get("_saved_profile_source"):
+            lines.append("Profile source: saved vault memory (not a live search this turn)")
+        elif probe.get("_owner_profile_source"):
+            lines.append("Profile source: Chief / Owner identity")
+        else:
+            lines.append("Profile source: recent Deep Probe in this session")
+
+        bio = (probe.get("bio") or "").strip()
+        if bio:
+            lines.append(f"Bio: {bio[:140]}")
+
+        findings = probe.get("key_findings") or []
+        if findings:
+            lines.append("Key findings: " + "; ".join(str(f) for f in findings[:3]))
+
+        return "\n".join(lines)
+
+    def record_session_action(
+        self,
+        session_id: str,
+        action: str,
+        detail: str = "",
+        *,
+        proactive_nudge: str = "",
+    ) -> None:
+        """Track the last meaningful action for situational awareness in prompts."""
+        if not session_id or not action:
+            return
+        if self.working_memory_engine:
+            try:
+                self.working_memory_engine.set_metadata(
+                    session_id, self._LAST_ACTION_META_KEY, action
+                )
+                self.working_memory_engine.set_metadata(
+                    session_id, self._LAST_ACTION_DETAIL_KEY, detail
+                )
+                if proactive_nudge:
+                    self.working_memory_engine.set_metadata(
+                        session_id, self._PROACTIVE_NUDGE_KEY, proactive_nudge
+                    )
+            except Exception:
+                pass
+
+    def consume_proactive_nudge(self, session_id: str) -> None:
+        """Clear one-shot proactive hint after it has been used for a turn."""
+        if not session_id or not self.working_memory_engine:
+            return
+        try:
+            self.working_memory_engine.set_metadata(session_id, self._PROACTIVE_NUDGE_KEY, "")
+        except Exception:
+            pass
+
+    def format_situational_awareness_for_prompt(self, session_id: str) -> str:
+        """Build co-pilot situational awareness block for the system prompt."""
+        if not session_id:
+            return ""
+
+        probe = self.get_last_probe(session_id)
+        name = (probe or {}).get("name") or ""
+        action = ""
+        detail = ""
+        nudge = ""
+
+        if self.working_memory_engine:
+            try:
+                action = self.working_memory_engine.get_metadata(
+                    session_id, self._LAST_ACTION_META_KEY, ""
+                ) or ""
+                detail = self.working_memory_engine.get_metadata(
+                    session_id, self._LAST_ACTION_DETAIL_KEY, ""
+                ) or ""
+                nudge = self.working_memory_engine.get_metadata(
+                    session_id, self._PROACTIVE_NUDGE_KEY, ""
+                ) or ""
+            except Exception:
+                pass
+
+        if not name and detail:
+            name = detail
+
+        bullets: list[str] = []
+        if name:
+            bullets.append(
+                f"Active focus: **{name}** — you are co-piloting this session; "
+                "connect answers to this person when relevant."
+            )
+        if action:
+            label = action.replace("_", " ")
+            bullets.append(f"Last action: {label}" + (f" ({detail})" if detail else ""))
+        if nudge:
+            bullets.append(f"Optional follow-up (at most once, only if natural): {nudge}")
+
+        if not bullets:
+            return ""
+
+        return (
+            "## Situational Awareness\n\n"
+            "You are the Chief's co-pilot — aware, not reactive-only. "
+            "When the active focus is relevant, reference it naturally in one short phrase. "
+            "After actions (probe, save, update), a brief acknowledgment is enough. "
+            "Never stack multiple suggestions. Never use customer-support phrasing "
+            "(no \"Is there anything else I can help you with?\").\n"
+            + "\n".join(f"- {b}" for b in bullets)
+        )
+
+    def _proactive_save_voice(self, msg: str, name: str, *, is_update: bool) -> str:
+        if is_update or not name:
+            return msg
+        return f"{msg.rstrip('.')}. Want me to keep an eye on updates for {name}?"
+
+    def _proactive_update_voice(self, msg: str, name: str) -> str:
+        if not name:
+            return msg
+        return f"{msg.rstrip('.')}. Say when you want another refresh on {name}."
 
     def _is_owner_profile(self, name: str) -> bool:
         if not self.owner_profile:
@@ -775,9 +912,23 @@ class SavedProfilesStore:
                 )
             ok, msg, profile_id = self.save_profile(last)
             profiles = self.list_profiles()
+            name = (last or {}).get("name") or ""
+            is_update = "Updated existing" in msg
+            voice = self._proactive_save_voice(msg, name, is_update=is_update) if ok else msg
+            if ok:
+                self.record_session_action(
+                    session_id,
+                    "profile_save",
+                    name,
+                    proactive_nudge=(
+                        ""
+                        if is_update
+                        else "Offer once — only if natural — whether to refresh this profile later."
+                    ),
+                )
             return ProfileCommandResult(
                 handled=True,
-                voice_text=msg,
+                voice_text=voice,
                 open_panel="panelSocial" if ok else "chat",
                 ui_mode="vault" if ok else "",
                 vault_payload=self.build_vault_payload(profiles) if ok else None,
@@ -810,6 +961,7 @@ class SavedProfilesStore:
             vault = self.build_vault_payload(profiles)
             if found:
                 voice = f"Affirmative, Chief — {found.get('name')} is in the vault. Pulling their folder forward."
+                self.record_session_action(session_id, "vault_lookup", found.get("name") or "")
             elif name:
                 voice = f"No saved profile for {name}. The vault scan came up empty."
             else:
@@ -840,10 +992,12 @@ class SavedProfilesStore:
                     vault_payload=self.build_vault_payload(self.list_profiles()),
                 )
             data = record.get("data") or {}
+            name = record.get("name") or ""
+            self.record_session_action(session_id, "profile_open", name)
             self.set_last_probe(session_id, data)
             return ProfileCommandResult(
                 handled=True,
-                voice_text=f"Opening {record.get('name')} — saved profile loaded from vault.",
+                voice_text=f"Opening {name} — saved profile loaded from vault.",
                 open_panel="panelSocial",
                 ui_mode="profile_detail",
                 deep_probe=data,
@@ -861,6 +1015,8 @@ class SavedProfilesStore:
             record = self.find_by_name(name) if name else None
             ok, msg = self.delete_profile(name)
             profiles = self.list_profiles()
+            if ok:
+                self.record_session_action(session_id, "profile_delete", name or "")
             return ProfileCommandResult(
                 handled=True,
                 voice_text=msg,
@@ -897,12 +1053,19 @@ class SavedProfilesStore:
             ok, msg = self.update_profile(name, fresh)
             if ok:
                 self.set_last_probe(session_id, fresh)
+                self.record_session_action(
+                    session_id,
+                    "profile_update",
+                    name,
+                    proactive_nudge="Mention briefly that the vault entry is fresh — only if relevant.",
+                )
             social = self.profile_to_social_payload(fresh) if ok else None
             profiles = self.list_profiles()
             record = self.find_by_name(name)
+            voice = self._proactive_update_voice(msg, name) if ok else msg
             return ProfileCommandResult(
                 handled=True,
-                voice_text=msg,
+                voice_text=voice,
                 open_panel="panelSocial" if ok else "chat",
                 ui_mode="profile_detail" if ok else "vault",
                 profile_action="update" if ok else "",

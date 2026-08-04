@@ -37,9 +37,10 @@ _ASSISTANT_STYLE_RES = [
 
 _HINGLISH_MARKERS = re.compile(
     r"\b(hai|hain|kya|nahi|nahin|mat|tum|tera|teri|mera|meri|haan|theek|"
-    r"achha|accha|bahut|kyun|kyu|kaise|kaisa|bolo|sun|yaar|bhai|abhi|"
-    r"karo|karna|chahiye|woh|yeh|iska|uska|rha|raha|rahi|gaya|gayi|"
-    r"mujhe|tumhe|aap|ji)\b",
+    r"achha|accha|acha|bahut|kyun|kyu|kaise|kaisa|bolo|sun|suno|yaar|yar|bhai|"
+    r"badi|baji|baje|abhi|karo|karna|chahiye|woh|yeh|iska|uska|rha|raha|rahi|"
+    r"gaya|gayi|mujhe|tumhe|aap|ji|chalo|dekho|batao|sab|set|scene|vibe|"
+    r"pakdo|final|sort|wala|wali|karti|karte|karu|bolte|na)\b",
     re.IGNORECASE,
 )
 
@@ -56,12 +57,33 @@ def _compress_assistant_for_continuity(content: str) -> str:
     if not text or len(text) < 12:
         return ""
     # Prefer a short factual gist over full prior wording.
-    if len(text) > 120:
-        cut = text[:120]
+    if len(text) > 80:
+        cut = text[:80]
         if " " in cut:
             cut = cut.rsplit(" ", 1)[0]
         text = cut.strip(" ,.!?;:-")
     return text
+
+
+_OFF_TOPIC_GIST_MARKERS = (
+    "cocktail recipe",
+    "margarita",
+    "mojito",
+    "goa weather",
+    "your name is sanjay",
+    "cockpit is ready",
+    "cockpit ready",
+)
+
+
+def _is_low_value_gist(gist: str) -> bool:
+    """Drop long or off-topic assistant gists from continuity."""
+    lower = (gist or "").lower()
+    if not lower:
+        return True
+    if len(gist) > 90:
+        return True
+    return any(marker in lower for marker in _OFF_TOPIC_GIST_MARKERS)
 
 
 def format_messages_for_prompt(messages: List[Dict[str, str]]) -> str:
@@ -84,21 +106,28 @@ def format_messages_for_prompt(messages: List[Dict[str, str]]) -> str:
             user_points.append(content[:220])
         elif role in ("assistant", "bot", "zesty"):
             gist = _compress_assistant_for_continuity(content)
-            if gist:
+            if gist and not _is_low_value_gist(gist):
                 decisions.append(gist)
 
     lines: List[str] = []
     if user_points:
         lines.append(f"Active user intent: {user_points[-1]}")
-        prior_users = user_points[-4:-1]
+        prior_users = user_points[-3:-1]
         if prior_users:
             lines.append("Recent user points:")
             for point in prior_users:
-                lines.append(f"- {point}")
+                lines.append(f"- {point[:120]}")
     if decisions:
         lines.append("Established facts/decisions (meaning only — never copy wording or tone):")
-        for item in decisions[-5:]:
+        for item in decisions[-2:]:
             lines.append(f"- {item}")
+
+    # Immediate prior turn (current user message is often already the latest in the list)
+    if len(user_points) >= 2:
+        lines.append(f"Previous user message: {user_points[-2]}")
+    if decisions:
+        lines.append(f"Your last reply (gist): {decisions[-1]}")
+
     return "\n".join(lines)
 
 

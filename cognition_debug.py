@@ -63,6 +63,10 @@ def memory_reject_reason(text: str) -> str | None:
     for marker, reason in dialogue_markers:
         if marker in lower:
             return reason
+    if re.search(r"\b(yaar|yar|यार)\b", lower):
+        return "forbidden slang (yaar/yar)"
+    if len(raw) > 400:
+        return "overlong dialogue monologue"
     if re.match(r"^(hi|hello|hey|namaste)\b", lower) and ("?" in raw or "help" in lower):
         return "greeting / service template"
     return None

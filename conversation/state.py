@@ -161,4 +161,13 @@ class WorkingMemoryState:
             parts.append(f"File: {self.active_file}")
         if self.current_mode:
             parts.append(f"Mode: {self.current_mode}")
+        probe = self.metadata.get("last_deep_probe")
+        if isinstance(probe, dict) and probe.get("name"):
+            platform = probe.get("platform") or "web"
+            parts.append(f"Active profile focus: {probe.get('name')} ({platform})")
+        last_action = self.metadata.get("last_action")
+        if isinstance(last_action, dict) and last_action.get("type"):
+            subject = last_action.get("subject") or ""
+            label = last_action["type"].replace("_", " ")
+            parts.append(f"Last action: {label}" + (f" — {subject}" if subject else ""))
         return "\n".join(parts) if parts else ""

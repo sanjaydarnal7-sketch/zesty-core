@@ -218,6 +218,10 @@ class ZestyRuntimeLogger:
         print(f"Final Prompt Tokens         : {final_tokens}")
         _print_divider()
 
+    def record_latency(self, latency_ms: float) -> None:
+        with self._lock:
+            self.recent_latencies.append(latency_ms)
+
     def log_final_prompt(
         self,
         system_prompt: str,
@@ -228,28 +232,38 @@ class ZestyRuntimeLogger:
         user_message: str,
         anti_meta_text: str = "",
     ):
-        sections = []
-        if anti_meta_text:
-            sections.append(("ANTI-META", anti_meta_text))
-        sections.append(("SYSTEM", system_prompt))
-        if conversation_dna_text and conversation_dna_text in system_prompt:
-            sections.append(("CONVERSATION DNA", conversation_dna_text))
-        if persona_text and persona_text in system_prompt:
-            sections.append(("PERSONA", persona_text))
+        sections = [("SYSTEM", system_prompt)]
         if memory_text:
             sections.append(("MEMORY", memory_text))
         if history_text:
             sections.append(("HISTORY", history_text))
         sections.append(("USER", user_message))
 
+        dna_in_system = bool(
+            conversation_dna_text and conversation_dna_text.strip() in system_prompt
+        )
+        persona_in_system = bool(persona_text and persona_text.strip() in system_prompt)
+        dna_dup = (
+            conversation_dna_text
+            and system_prompt.count(conversation_dna_text.strip()[:120]) > 1
+        )
+        persona_dup = (
+            persona_text and system_prompt.count(persona_text.strip()[:120]) > 1
+        )
+
         print(_color("FINAL PROMPT STRUCTURE", "bold"))
         print(f"System Prompt Length        : {len(system_prompt)}")
-        print(f"Conversation DNA Length     : {len(conversation_dna_text)}")
-        print(f"Persona Length              : {len(persona_text)}")
+        print(f"Conversation DNA (in SYSTEM): {'YES' if dna_in_system else 'NO'}")
+        print(f"Persona injection (in SYS)  : {'YES' if persona_in_system else 'NO'}")
+        if dna_dup or persona_dup:
+            print(_color("WARNING: Soul content duplicated in SYSTEM block", "yellow"))
         print(f"Retrieved Memory Length     : {len(memory_text)}")
         print(f"History Length              : {len(history_text)}")
         print(f"User Message Length         : {len(user_message)}")
-        print(f"Final Prompt Length         : {len(system_prompt) + len(memory_text) + len(history_text) + len(user_message)}")
+        print(
+            f"Final Prompt Length         : "
+            f"{len(system_prompt) + len(memory_text) + len(history_text) + len(user_message)}"
+        )
         _print_divider()
 
         for title, text in sections:

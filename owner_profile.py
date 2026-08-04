@@ -28,6 +28,9 @@ _SELF_QUERY_PATTERNS = (
     r"\bwho is me\b",
     r"\beverything you can find about me\b",
     r"\bwhat do you know about me\b",
+    r"\b(latest|updated)\s+data\b.*\b(me|my|instagram|profile)\b",
+    r"\b(my|meri)\s+(instagram|photo|picture|profile pic|profile picture)\b",
+    r"\b(get|bring)\s+(my|the)\s+(picture|photo|image)\b",
 )
 
 _CHIEF_REFERENCE_PATTERNS = (
@@ -166,21 +169,55 @@ class OwnerProfile:
 
         return "\n".join(line for line in lines if line is not None)
 
-    def to_social_payload(self) -> dict[str, Any]:
+    def resolve_profile_image(self, deep_probe_engine: Any | None = None) -> str | None:
+        """Return stored or scraped profile image URL for Chief."""
+        profile = self.load()
+        stored = (profile.get("profile_image_url") or "").strip()
+        if stored:
+            return stored
+
+        if deep_probe_engine is None:
+            return None
+
+        from deep_probe_engine import select_best_profile_image
+
+        social = profile.get("social") or {}
+        full_name = profile.get("full_name") or "Sanjay Darnal"
+        candidates: list[dict[str, Any]] = []
+        for url in social.values():
+            if not url or not str(url).startswith("http"):
+                continue
+            try:
+                page_candidates = deep_probe_engine._fetch_page_image_candidates(
+                    str(url),
+                    {"title": full_name, "snippet": profile.get("bio") or ""},
+                )
+                candidates.extend(page_candidates)
+            except Exception:
+                continue
+
+        if not candidates:
+            return None
+
+        pick = select_best_profile_image(candidates, subject_name=full_name)
+        return (pick.get("url") or "").strip() or None
+
+    def to_social_payload(self, *, deep_probe_engine: Any | None = None) -> dict[str, Any]:
         """Format owner data like a Deep Probe payload for Social Panel."""
         profile = self.load()
         if not profile:
             return {}
         panel_text = self.format_chief_identity_block()
         panel_text = panel_text.replace("## Chief / Owner Identity\n\n", "CHIEF / OWNER IDENTITY\n\n")
+        image_url = self.resolve_profile_image(deep_probe_engine)
         return {
             "name": profile.get("full_name"),
             "username": profile.get("chief_id"),
             "platform": "owner",
             "bio": profile.get("bio"),
-            "profile_image_url": None,
-            "profile_image_source": "owner",
-            "profile_image_confidence": "high",
+            "profile_image_url": image_url,
+            "profile_image_source": "owner" if image_url else "owner",
+            "profile_image_confidence": "high" if image_url else "low",
             "key_findings": profile.get("roles") or [],
             "social_links": [
                 {"platform": k, "url": v}

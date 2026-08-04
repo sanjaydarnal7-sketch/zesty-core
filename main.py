@@ -8,6 +8,8 @@ import asyncio
 import re
 import sys
 import logging
+import threading
+import traceback
 from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory
 import requests
@@ -18,19 +20,26 @@ from groq import (
     PermissionDeniedError,
 )
 from openpersona_loader import OpenPersonaPersona
-from tts_router import TTSRouter
 from zesty_runtime_logger import zesty_logger
 from conversation_manager.manager import ConversationManager
 from conversation.working_memory import WorkingMemoryEngine
 from cognition_debug import DEBUG_COGNITION, CognitionDebugTrace, memory_reject_reason
 from deep_probe_engine import DeepProbeEngine
+from hindi_voice import apply_hindi_partner_voice
+from probe_fast_path import format_probe_voice_summary, is_pure_data_probe_query
 from owner_profile import OwnerProfile
 from saved_profiles import SavedProfilesStore
+from presence import PresenceManager
+import hashlib
+import math
 import chromadb
 from chromadb import EmbeddingFunction, Documents, Embeddings
 from dotenv import load_dotenv
 
 load_dotenv()
+
+from tts_router import tts_router
+from tts.playback import run_serialized, stop_playback as stop_tts_playback
 
 logging.getLogger('wsgi').setLevel(logging.ERROR)
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
@@ -234,8 +243,6 @@ GROQ_MODEL = groq_model_router.current_model if groq_model_router.AVAILABLE_MODE
 zesty_persona = OpenPersonaPersona("personas/zesty")
 zesty_system_prompt = zesty_persona.get_system_prompt()
 
-tts_router = TTSRouter()
-
 DB_DIR = "zesty_knowledge_base"
 chroma_client = chromadb.PersistentClient(path=DB_DIR)
 JOURNAL_FILE = "boss_personal_journal.json"
@@ -245,13 +252,39 @@ conversation_manager = ConversationManager()
 working_memory_engine = WorkingMemoryEngine()
 
 class ZestyCloudEmbeddingFunction(EmbeddingFunction):
-    def __call__(self, input: Documents) -> any: # type: ignore
+    """Cloud embed with deterministic hash fallback (never zero vectors)."""
+
+    _DIM = 384
+
+    @staticmethod
+    def _hash_embed(text: str, dim: int = 384) -> list[float]:
+        vec = [0.0] * dim
+        tokens = re.findall(r"\w+", (text or "").lower()) or [""]
+        for i, tok in enumerate(tokens):
+            digest = hashlib.sha256(f"{i}:{tok}".encode()).digest()
+            for j in range(dim):
+                byte = digest[j % len(digest)]
+                vec[j] += ((byte / 127.5) - 1.0) / max(len(tokens), 1)
+        norm = math.sqrt(sum(x * x for x in vec)) or 1.0
+        return [x / norm for x in vec]
+
+    def __call__(self, input: Documents) -> Embeddings:  # type: ignore
         try:
             url = "https://feature-extraction.hf.space/embed"
-            res = requests.post(url, json={"inputs": input}, timeout=3.0)
-            if res.status_code == 200: return res.json()
-        except Exception: pass
-        return [[0.0] * 384 for _ in input]
+            res = requests.post(url, json={"inputs": input}, timeout=5.0)
+            if res.status_code == 200:
+                data = res.json()
+                if (
+                    isinstance(data, list)
+                    and data
+                    and isinstance(data[0], list)
+                    and any(abs(float(x)) > 1e-6 for x in data[0][:16])
+                ):
+                    return data
+        except Exception:
+            pass
+        print("[CHROMA] Cloud embed unavailable — using hash fallback", flush=True)
+        return [self._hash_embed(t) for t in input]
 
 cloud_embedding = ZestyCloudEmbeddingFunction()
 collection = chroma_client.get_or_create_collection(name="zesty_master_lexicon_v4", embedding_function=cloud_embedding)
@@ -264,6 +297,16 @@ saved_profiles_store = SavedProfilesStore(
     owner_profile=owner_identity,
     working_memory_engine=working_memory_engine,
     conversation_manager=conversation_manager,
+)
+from presence.identity_registry import IdentityRegistry
+from presence.profile_bridge import IdentityProfileBridge
+
+_identity_registry = IdentityRegistry()
+_profile_bridge = IdentityProfileBridge(_identity_registry, saved_profiles_store)
+presence_manager = PresenceManager(
+    registry=_identity_registry,
+    profile_bridge=_profile_bridge,
+    owner_display_name="Sanjay Darnal",
 )
 #endregion
 
@@ -383,15 +426,18 @@ class ZestyCommercialOS:
         self.deep_probe_engine = DeepProbeEngine(self.research_service)
         self.owner_profile = owner_identity
         self.saved_profiles = saved_profiles_store
+        self.presence_manager = presence_manager
         self._owner_update_asked_sessions: set[str] = set()
 
         self.cleanup_audio()
 
     def cleanup_audio(self):
         try:
-            subprocess.run(["pkill", "afplay"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            if os.path.exists("zesty_reply.mp3"): os.remove("zesty_reply.mp3")
-        except Exception: pass
+            stop_tts_playback()
+            if os.path.exists("zesty_reply.mp3"):
+                os.remove("zesty_reply.mp3")
+        except Exception:
+            pass
 
     def get_live_weather(self):
         return self.weather_service.get_weather()
@@ -512,7 +558,7 @@ class ZestyCommercialOS:
         )
 
     def resolve_session_language(self, session_id: str, text: str) -> str:
-        """Sticky thread language — switch only when the user clearly switches."""
+        """Follow the latest user message — switch when language is clear."""
         explicit = self._detect_explicit_language_switch(text)
         if explicit:
             self._session_lang[session_id] = explicit
@@ -523,16 +569,24 @@ class ZestyCommercialOS:
         if prev is None:
             self._session_lang[session_id] = detected
             return detected
-        if detected == prev:
-            return prev
 
-        # Hindi thread does not drift to English on short English fragments.
-        if prev == "hindi" and detected == "english":
-            return prev
-
-        if self._user_clearly_switched_language(text, detected):
+        if detected != prev and self._user_clearly_switched_language(text, detected):
             self._session_lang[session_id] = detected
             return detected
+
+        # Short English commands after a Hindi thread still count as a switch.
+        if prev == "hindi" and detected == "english":
+            raw = (text or "").strip()
+            from conversation_manager.models import _HINGLISH_MARKERS
+
+            if (
+                not re.search(r"[\u0900-\u097F]", raw)
+                and not _HINGLISH_MARKERS.search(raw)
+                and re.search(r"[A-Za-z]", raw)
+            ):
+                self._session_lang[session_id] = "english"
+                return "english"
+
         return prev
 
     @staticmethod
@@ -589,6 +643,7 @@ class ZestyCommercialOS:
         if lang_hint == "hindi":
             lines.append(
                 "Hindi must match English Zesty: same confidence, length, and partner tone. "
+                "Feminine verb forms only. Use तुम, not आप. "
                 "Short and direct — never lecture, never formal assistant register."
             )
         return "## Execution (this turn)\n\n" + " ".join(lines)
@@ -643,6 +698,8 @@ class ZestyCommercialOS:
                 if line:
                     out = line
                     break
+        if lang_hint == "hindi":
+            out = apply_hindi_partner_voice(out)
         return out
 
     def _is_assistant_style_memory(self, text: str) -> bool:
@@ -679,31 +736,66 @@ class ZestyCommercialOS:
         )
         if any(marker in lower for marker in dialogue_markers):
             return True
+        if re.search(r"\b(yaar|yar|यार)\b", lower):
+            return True
+        if len(raw) > 400:
+            return True
         # Greeting / service templates
         if re.match(r"^(hi|hello|hey|namaste)\b", lower) and ("?" in raw or "help" in lower):
             return True
         return False
 
-    def _format_factual_memories(self, documents: list) -> str:
+    @staticmethod
+    def _memory_relevance_score(query: str, doc: str, distance: float | None) -> float:
+        """Higher is better. Uses vector distance when meaningful, else lexical overlap."""
+        q_words = set(re.findall(r"\w+", (query or "").lower()))
+        d_words = set(re.findall(r"\w+", (doc or "").lower()))
+        lexical = (len(q_words & d_words) / len(q_words)) if q_words else 0.0
+        if distance is None:
+            return lexical
+        dist = float(distance)
+        if dist >= 0.999:
+            return lexical
+        return max(lexical, 1.0 - dist)
+
+    def _format_factual_memories(
+        self, documents: list, query: str = "", distances: list | None = None
+    ) -> tuple[str, float]:
         """Keep knowledge only — projects, people, preferences, facts."""
         facts: list[str] = []
         seen: set[str] = set()
-        for doc in documents:
+        best_score = 0.0
+        items = list(documents)
+        dist_list = distances or []
+        ranked = sorted(
+            enumerate(items),
+            key=lambda pair: self._memory_relevance_score(
+                query, str(pair[1] or ""), dist_list[pair[0]] if pair[0] < len(dist_list) else None
+            ),
+            reverse=True,
+        )
+        for idx, doc in ranked:
             if not doc or not str(doc).strip():
                 continue
             text = str(doc).strip()
             if self._is_assistant_style_memory(text):
                 continue
+            if memory_reject_reason(text):
+                continue
             key = text.lower()
             if key in seen:
                 continue
             seen.add(key)
+            score = self._memory_relevance_score(
+                query, text, dist_list[idx] if idx < len(dist_list) else None
+            )
+            best_score = max(best_score, score)
             facts.append(text)
             if len(facts) >= 3:
                 break
         if not facts:
-            return ""
-        return "\n".join(f"- {fact}" for fact in facts)
+            return "", 0.0
+        return "\n".join(f"- {fact}" for fact in facts), best_score
 
     def query_local_chroma_database(self, user_text: str) -> str:
         mem_start = time.perf_counter()
@@ -723,7 +815,9 @@ class ZestyCommercialOS:
                 docs = results["documents"][0]
                 ids = (results.get("ids") or [[]])[0]
                 distances = (results.get("distances") or [[]])[0]
-                factual = self._format_factual_memories(docs)
+                factual, memory_ranking = self._format_factual_memories(
+                    docs, query=user_text, distances=distances
+                )
                 kept_ids = []
                 accepted_debug: list[dict[str, str]] = []
                 rejected_debug: list[dict[str, str]] = []
@@ -746,8 +840,6 @@ class ZestyCommercialOS:
                                 {"id": str(doc_id), "doc": doc_text[:220]}
                             )
                 memory_ids = kept_ids
-                if distances:
-                    memory_ranking = float(distances[0])
                 zesty_logger.log_memory(
                     working_memory="",
                     long_term_memories=len(memory_ids),
@@ -776,19 +868,60 @@ class ZestyCommercialOS:
 
         return ""
 
-    def speak_text_edge_seamless(self, text_to_speak: str, current_lang: str):
-        tts_start = time.perf_counter()
-        tts_lang = "en" if current_lang == "english" else "hi"
-        tts_router.speak_text(text_to_speak, tts_lang)
-        tts_ms = (time.perf_counter() - tts_start) * 1000
-        voice_name = "Edge TTS"
-        if getattr(tts_router, "_elevenlabs_available", False):
-            voice_name = "ElevenLabs"
-        zesty_logger.log_voice(
-            voice_name=voice_name,
-            audio_generated=bool(text_to_speak.strip()),
-            duration_ms=tts_ms,
+    def speak_text_edge_seamless(
+        self,
+        text_to_speak: str,
+        current_lang: str,
+        *,
+        social_probe: bool = False,
+    ):
+        """Queue TTS so replies play one after another without chopping."""
+        preview = (text_to_speak or "").strip()
+        if not preview:
+            print("[TTS] speak_text_edge_seamless skipped — empty reply", flush=True)
+            return
+
+        if social_probe:
+            if len(preview) > 400:
+                preview = self._first_sentence(preview) or preview[:120]
+            else:
+                preview = self._first_sentence(preview) or preview
+            if not preview:
+                print("[TTS] speak skipped — social probe reply too long for voice", flush=True)
+                return
+
+        tts_lang = current_lang if current_lang in ("english", "hindi", "hinglish") else "english"
+        print(
+            f"[TTS] speak_text_edge_seamless queued ({len(preview)} chars, lang={tts_lang})",
+            flush=True,
         )
+
+        def _run_tts() -> bool:
+            tts_start = time.perf_counter()
+            try:
+                tts_router.speak_text(preview, tts_lang)
+                tts_ms = (time.perf_counter() - tts_start) * 1000
+                voice_name = getattr(tts_router, "active_provider", "none")
+                if voice_name == "none":
+                    err = getattr(tts_router, "last_error", "")
+                    print(f"[TTS] speak failed after {tts_ms:.0f}ms — {err}", flush=True)
+                zesty_logger.log_voice(
+                    voice_name=voice_name,
+                    audio_generated=voice_name != "none",
+                    duration_ms=tts_ms,
+                )
+                return True
+            except Exception as exc:
+                print(f"[TTS] FATAL exception in TTS thread: {exc}", flush=True)
+                traceback.print_exc()
+                zesty_logger.log_voice(
+                    voice_name="error",
+                    audio_generated=False,
+                    duration_ms=(time.perf_counter() - tts_start) * 1000,
+                )
+                return False
+
+        run_serialized(_run_tts, wait=False)
 
     def _sanitize_response(self, text: str) -> str:
         """Strip meta leaks + generic assistant/therapist/support phrasing only."""
@@ -881,15 +1014,197 @@ class ZestyCommercialOS:
                 "Never translate unless asked. Never force slang or honorifics the user did not use."
             )
 
-        # hindi — same minimal lock shape as English; one parity line only
+        # hindi — feminine partner tone, casual तुम
         return (
             "## Language Lock (this turn)\n\n"
             "Reply in Hindi (Devanagari) only for this turn. "
             "Stay in Hindi for this thread unless the user's latest message clearly switched language. "
             "Never translate unless asked. Never force slang or honorifics the user did not use.\n\n"
+            "Zesty speaks Hindi as a woman: always feminine verb forms "
+            "(सकती हूँ, करती हूँ, बोलती हूँ, नहीं हूँ — never सकता/करता/बोलता). "
+            "Address Sanjay with तुम/तुम्हारा — never आप/आपका unless he used आप first.\n\n"
             "Write Hindi exactly as the English version would sound if spoken naturally by the same person. "
+            "Casual partner tone — not formal, not assistant register. "
             "Do not increase formality, politeness, explanation depth, or sentence length merely because the language is Hindi."
         )
+
+    _PROFILE_FOLLOW_UP_RE = re.compile(
+        r"\b("
+        r"save|update|delete|refresh|open|show|remember|"
+        r"haan|yes|ok|okay|do it|go ahead|kar do|karo|"
+        r"this profile|isko|is ko|ye profile"
+        r")\b",
+        re.IGNORECASE,
+    )
+
+    def _is_profile_follow_up(self, text: str) -> bool:
+        lowered = (text or "").lower().strip()
+        if not lowered:
+            return False
+        if self.saved_profiles.parse_command(text):
+            return True
+        if len(lowered.split()) <= 4 and self._PROFILE_FOLLOW_UP_RE.search(lowered):
+            return True
+        return False
+
+    def _update_session_continuity(
+        self,
+        session_id: str,
+        cleaned_input: str,
+        *,
+        deep_probe_payload: dict | None = None,
+    ) -> None:
+        """Sync working memory + conversation manager with the current turn."""
+        if not session_id:
+            return
+
+        conversation_manager.ensure_session(session_id)
+        wm_state = working_memory_engine.ensure_session(session_id)
+        wm_state.user_intent = cleaned_input[:220]
+        wm_state.touch()
+
+        profile_name = None
+        if deep_probe_payload and deep_probe_payload.get("name"):
+            profile_name = str(deep_probe_payload["name"]).strip()
+        elif self._is_profile_follow_up(cleaned_input):
+            last_probe = self.saved_profiles.get_last_probe(session_id)
+            if last_probe and last_probe.get("name"):
+                profile_name = str(last_probe["name"]).strip()
+
+        if profile_name:
+            wm_state.current_topic = profile_name
+            wm_state.current_mode = wm_state.current_mode or "social_probe"
+            note = f"Profile in focus: {profile_name}"
+            if note not in wm_state.recent_decisions:
+                wm_state.recent_decisions.append(note)
+                wm_state.recent_decisions = wm_state.recent_decisions[-8:]
+            conversation_manager.set_active_topic(session_id, profile_name)
+            conversation_manager.update_topic_structured(session_id, profile_name)
+            conversation_manager.update_task(session_id, f"Profile: {profile_name}")
+            return
+
+        topic_hint = cleaned_input.strip()
+        if len(topic_hint) > 80:
+            topic_hint = topic_hint[:80].rsplit(" ", 1)[0]
+        if topic_hint:
+            wm_state.current_topic = topic_hint
+            conversation_manager.set_active_topic(session_id, topic_hint)
+            conversation_manager.update_topic_structured(session_id, topic_hint)
+
+    def _record_profile_cmd_in_history(self, session_id: str, user_text: str, reply_text: str) -> None:
+        if not session_id or not user_text:
+            return
+        try:
+            conversation_manager.ensure_session(session_id)
+            conversation_manager.add_message(session_id, "user", user_text)
+            if reply_text:
+                conversation_manager.add_message(session_id, "assistant", reply_text)
+        except Exception:
+            pass
+
+    def handle_presence_command(self, text: str) -> dict | None:
+        """Simulate presence modes or Chief introductions — fast early return."""
+        from presence.commands import parse_introduction, parse_simulate_command
+        from presence.models import PresenceState, PrivacyTier
+
+        sim = parse_simulate_command(text)
+        if sim:
+            snap, reply = self.presence_manager.run_simulate(sim)
+            return {
+                "voice_text": reply,
+                "dynamic_html": f"<div class='hermes-dynamic-content'>{reply}</div>",
+                "open_panel": "chat",
+                "presence": self.presence_manager.to_api_payload(),
+            }
+
+        intro = parse_introduction(text)
+        if intro:
+            snap = self.presence_manager.snapshot
+            can_introduce = snap.privacy_tier == PrivacyTier.FULL or snap.state in (
+                PresenceState.CHIEF_MODE,
+                PresenceState.UNKNOWN_RESTRICTED,
+                PresenceState.PRIVACY_HOLD,
+            )
+            if can_introduce:
+                _, reply = self.presence_manager.introduce_person(intro.display_name)
+                return {
+                    "voice_text": reply,
+                    "dynamic_html": f"<div class='hermes-dynamic-content'>{reply}</div>",
+                    "open_panel": "chat",
+                    "presence": self.presence_manager.to_api_payload(),
+                }
+
+        return None
+
+    def _will_run_social_probe(
+        self, text: str, *, owner_self_query: bool, presence_restricted: bool
+    ) -> bool:
+        if owner_self_query:
+            return True
+        if presence_restricted:
+            return False
+        return self.deep_probe_engine.should_probe(text)
+
+    def _assemble_probe_prompt(
+        self,
+        *,
+        web_intel: str,
+        session_id: str | None,
+        lang_hint: str = "english",
+        owner_self_query: bool = False,
+        execution_flags: dict[str, bool] | None = None,
+    ) -> str:
+        """Compact prompt for probe/search turns — faster LLM, smaller context."""
+        parts = [
+            "You are Zesty — Sanjay's direct partner co-pilot. No fluff, no service voice.",
+            self._language_lock_block(lang_hint),
+        ]
+
+        mode_response = self.presence_manager.export_response_addendum()
+        if mode_response:
+            parts.append(mode_response)
+
+        if owner_self_query:
+            parts.append(
+                "The user is Chief (Sanjay Darnal), the system owner. "
+                "Answer about him only — do not repeat the full Chief biography block."
+            )
+        else:
+            parts.append(
+                "The query is about someone other than Chief. "
+                "Do not inject Chief's full identity or biography."
+            )
+
+        if execution_flags is not None:
+            parts.append(
+                self._execution_directives_block(execution_flags, lang_hint=lang_hint)
+            )
+
+        parts.append(
+            "## Task (this turn)\n\n"
+            "Summarize the host research below in 5–8 tight bullets. "
+            "Lead with the answer. Include platform stats and recent activity when present. "
+            "Max ~120 words unless the user explicitly asked for exhaustive detail."
+        )
+
+        if web_intel and web_intel.strip() and web_intel.strip() != ResearchService.NO_USABLE_FACTS:
+            parts.append(
+                "## Host Research Results\n\n"
+                "Facts already fetched — use them. Do not claim you lack internet access.\n\n"
+                f"{web_intel.strip()}"
+            )
+
+        if session_id:
+            try:
+                probe_block = self.saved_profiles.format_probe_context_for_prompt(session_id)
+                if probe_block:
+                    last_probe = self.saved_profiles.get_last_probe(session_id)
+                    if self.presence_manager.allows_probe_context(last_probe):
+                        parts.append(f"## Active profile context\n\n{probe_block}")
+            except Exception:
+                pass
+
+        return "\n\n".join(parts)
 
     def _assemble_openpersona_prompt(
         self,
@@ -901,15 +1216,41 @@ class ZestyCommercialOS:
         lang_hint: str = "english",
         execution_flags: dict[str, bool] | None = None,
         owner_self_query: bool = False,
+        probe_mode: bool = False,
+        include_chief_identity: bool = True,
     ) -> str:
         """Build the OpenPersona system prompt with runtime state, research, memory, and history."""
+        if probe_mode:
+            return self._assemble_probe_prompt(
+                web_intel=web_intel,
+                session_id=session_id,
+                lang_hint=lang_hint,
+                owner_self_query=owner_self_query,
+                execution_flags=execution_flags,
+            )
+
         system_prompt = zesty_persona.build_system_prompt(include_faculties=include_faculties)
 
         runtime_block = zesty_persona.format_runtime_context()
         if runtime_block:
             system_prompt += "\n\n" + runtime_block
 
-        if self.owner_profile.should_inject():
+        presence_block = self.presence_manager.export_for_prompt()
+        if presence_block:
+            system_prompt += "\n\n" + presence_block
+
+        pending_greeting = self.presence_manager.consume_pending_greeting()
+        if pending_greeting:
+            system_prompt += (
+                "\n\n## Opening Cue\n\n"
+                f"If natural this turn, open your reply with: {pending_greeting}"
+            )
+
+        if (
+            include_chief_identity
+            and self.owner_profile.should_inject()
+            and self.presence_manager.allows_chief_identity()
+        ):
             ask_update = (
                 owner_self_query
                 and session_id
@@ -935,6 +1276,10 @@ class ZestyCommercialOS:
             "Use facts only as knowledge. No therapist voice, no customer-support voice, no forced slang. "
             "Never use yaar, yar, or यार — omit them entirely; do not substitute other slang."
         )
+
+        mode_response = self.presence_manager.export_response_addendum()
+        if mode_response:
+            system_prompt += f"\n{mode_response}"
 
         if web_intel and web_intel.strip():
             if web_intel.strip() == ResearchService.NO_USABLE_FACTS:
@@ -962,6 +1307,20 @@ class ZestyCommercialOS:
         if session_id:
             try:
                 continuity_parts = []
+
+                try:
+                    wm_block = working_memory_engine.export_for_prompt(session_id)
+                    if wm_block:
+                        continuity_parts.append(f"Working memory:\n{wm_block}")
+                except Exception:
+                    pass
+
+                probe_block = self.saved_profiles.format_probe_context_for_prompt(session_id)
+                if probe_block:
+                    last_probe = self.saved_profiles.get_last_probe(session_id)
+                    if self.presence_manager.allows_probe_context(last_probe):
+                        continuity_parts.append(f"Session profile context:\n{probe_block}")
+
                 structured = conversation_manager.get_structured_context(session_id)
                 if structured:
                     continuity_parts.append(f"Session focus: {structured}")
@@ -976,12 +1335,19 @@ class ZestyCommercialOS:
                 if history_str:
                     continuity_parts.append(history_str)
                 if continuity_parts:
+                    audience = self.presence_manager.continuity_audience_line()
                     system_prompt += (
                         "\n\n## Conversation Continuity\n\n"
-                        "Semantic state only — intent, facts, decisions, topic. "
-                        "Do not imitate prior wording, tone, slang, or service phrasing.\n"
+                        f"{audience} "
+                        "Use the state below for context. Continue naturally from where the conversation left off. "
+                        "Semantic state only — do not imitate prior wording, tone, slang, or service phrasing.\n"
                         + "\n".join(continuity_parts)
                     )
+
+                if not self.presence_manager.should_restrict_private_data():
+                    situational = self.saved_profiles.format_situational_awareness_for_prompt(session_id)
+                    if situational:
+                        system_prompt += "\n\n" + situational
             except KeyError:
                 pass
 
@@ -995,6 +1361,9 @@ class ZestyCommercialOS:
         session_id: str = None,
         lang_hint: str = "english",
         owner_self_query: bool = False,
+        *,
+        probe_mode: bool = False,
+        include_chief_identity: bool = True,
     ) -> tuple:
 
         # ================================================================
@@ -1021,6 +1390,8 @@ class ZestyCommercialOS:
             lang_hint=lang_hint,
             execution_flags=execution_flags,
             owner_self_query=owner_self_query,
+            probe_mode=probe_mode,
+            include_chief_identity=include_chief_identity,
         )
 
         # --- Token Budget Enforcement ---
@@ -1042,6 +1413,8 @@ class ZestyCommercialOS:
                             lang_hint=lang_hint,
                             execution_flags=execution_flags,
                             owner_self_query=owner_self_query,
+                            probe_mode=probe_mode,
+                            include_chief_identity=include_chief_identity,
                         )
                 except Exception:
                     pass
@@ -1070,6 +1443,8 @@ class ZestyCommercialOS:
                     lang_hint=lang_hint,
                     execution_flags=execution_flags,
                     owner_self_query=owner_self_query,
+                    probe_mode=probe_mode,
+                    include_chief_identity=include_chief_identity,
                 )
 
         estimated_tokens = len(system_prompt.split()) + len(user_prompt.split())
@@ -1413,6 +1788,9 @@ class ZestyCommercialOS:
                 token_count=len(raw_reply.split()) if raw_reply else 0,
             )
 
+            if session_id:
+                self.saved_profiles.consume_proactive_nudge(session_id)
+
             return raw_reply, panel_target
 
         except Exception as e:
@@ -1466,6 +1844,48 @@ def api_saved_profiles():
     except Exception:
         return jsonify({"total": 0, "profiles": [], "folders": {}}), 500
 
+
+@app.route("/api/presence/status", methods=["GET"])
+def api_presence_status():
+    try:
+        return jsonify(zesty_os.presence_manager.to_api_payload())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/presence/wake", methods=["POST"])
+def api_presence_wake():
+    try:
+        snap = zesty_os.presence_manager.handle_api_wake()
+        return jsonify(snap.to_dict())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/presence/simulate", methods=["POST"])
+def api_presence_simulate():
+    try:
+        from presence.commands import SimulateAction, SimulateCommand, parse_simulate_command
+
+        data = request.json or {}
+        action = str(data.get("action") or "").strip().lower()
+        name = str(data.get("name") or "").strip()
+        if not action:
+            text = str(data.get("text") or "").strip()
+            cmd = parse_simulate_command(text) if text else None
+        else:
+            try:
+                cmd = SimulateCommand(action=SimulateAction(action), name=name)
+            except ValueError:
+                cmd = None
+        if not cmd:
+            return jsonify({"error": "Invalid action. Use wake, sleep, chief, known, unknown, privacy_hold, reset, status."}), 400
+        snap, reply = zesty_os.presence_manager.run_simulate(cmd)
+        return jsonify({"reply": reply, "presence": zesty_os.presence_manager.to_api_payload()})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/ask_hermes", methods=["POST"])
 def ask_hermes_endpoint():
     print(f"\n[DEBUG BACKEND]: /ask_hermes endpoint hit - Connection VERIFIED from frontend")
@@ -1482,6 +1902,7 @@ def ask_hermes_endpoint():
         }), 500
 
 def _ask_hermes_impl():
+    request_start = time.perf_counter()
     data = request.json or {}
     print(f"[DEBUG BACKEND]: Request data received -> {data}")
     
@@ -1507,7 +1928,7 @@ def _ask_hermes_impl():
     zesty_logger.log_request(log_session_id, raw_input, lang_hint)
 
     if any(kw in lower_input for kw in ["stop", "ruko", "cancel"]):
-        subprocess.run(["pkill", "afplay"])
+        stop_tts_playback()
         return jsonify({"voice_text": "Stopped", "dynamic_html": "Playback stopped.", "open_panel": "CLOSE"})
 
     if any(kw in lower_input for kw in ["daddy", "home", "duty", "जैस्री"]) and not zesty_os.boss_mode_active:
@@ -1516,10 +1937,47 @@ def _ask_hermes_impl():
         zesty_os.speak_text_edge_seamless(greeting, lang_hint)
         return jsonify({"voice_text": greeting, "dynamic_html": greeting, "open_panel": "chat"})
 
-    is_os_cmd, output_intel = zesty_os.execute_os_command_or_research(cleaned_input)
+    is_os_cmd = False
+    output_intel = ""
+
+    owner_self_query = zesty_os.owner_profile.is_self_query(cleaned_input)
+    from presence.models import PresenceState
+
+    presence_state = zesty_os.presence_manager.snapshot.state
+    presence_restricted = presence_state in (
+        PresenceState.UNKNOWN_RESTRICTED,
+        PresenceState.PRIVACY_HOLD,
+    )
+    will_probe = zesty_os._will_run_social_probe(
+        cleaned_input,
+        owner_self_query=owner_self_query,
+        presence_restricted=presence_restricted,
+    )
+
+    if not will_probe:
+        is_os_cmd, output_intel = zesty_os.execute_os_command_or_research(cleaned_input)
     if is_os_cmd:
         zesty_os.speak_text_edge_seamless(output_intel, "english")
         return jsonify({"voice_text": output_intel, "dynamic_html": output_intel, "open_panel": "chat"})
+
+    presence_response = zesty_os.handle_presence_command(cleaned_input)
+    if presence_response:
+        zesty_os.speak_text_edge_seamless(presence_response["voice_text"], lang_hint)
+        zesty_os._record_profile_cmd_in_history(
+            session_id, cleaned_input, presence_response["voice_text"]
+        )
+        return jsonify(presence_response)
+
+    if zesty_os.saved_profiles.parse_command(cleaned_input) and not zesty_os.presence_manager.allows_vault_commands():
+        denial = zesty_os.presence_manager.vault_denial_reply()
+        zesty_os.speak_text_edge_seamless(denial, lang_hint)
+        zesty_os._record_profile_cmd_in_history(session_id, cleaned_input, denial)
+        return jsonify({
+            "voice_text": denial,
+            "dynamic_html": f"<div class='hermes-dynamic-content'>{denial}</div>",
+            "open_panel": "chat",
+            "presence": zesty_os.presence_manager.to_api_payload(),
+        })
 
     profile_cmd = zesty_os.saved_profiles.handle_command(
         cleaned_input,
@@ -1528,6 +1986,9 @@ def _ask_hermes_impl():
     )
     if profile_cmd.handled:
         zesty_os.speak_text_edge_seamless(profile_cmd.voice_text, lang_hint)
+        zesty_os._record_profile_cmd_in_history(session_id, cleaned_input, profile_cmd.voice_text)
+        if profile_cmd.deep_probe:
+            zesty_os.saved_profiles.set_last_probe(session_id, profile_cmd.deep_probe)
         response_payload = {
             "voice_text": profile_cmd.voice_text,
             "dynamic_html": f"<div class='hermes-dynamic-content'>{profile_cmd.voice_text}</div>",
@@ -1554,21 +2015,46 @@ def _ask_hermes_impl():
             response_payload["profile_action"] = profile_cmd.profile_action
         return jsonify(response_payload)
 
-    owner_self_query = zesty_os.owner_profile.is_self_query(cleaned_input)
     deep_probe_payload = None
     target_image_url = None
     force_panel = None
+    skip_llm = False
+    probe_mode = False
 
     if owner_self_query:
-        deep_probe_payload = zesty_os.owner_profile.to_social_payload()
+        if not zesty_os.presence_manager.allows_chief_identity():
+            denial = zesty_os.presence_manager.chief_identity_denial_reply()
+            zesty_os.speak_text_edge_seamless(denial, lang_hint)
+            zesty_os._record_profile_cmd_in_history(session_id, cleaned_input, denial)
+            return jsonify({
+                "voice_text": denial,
+                "dynamic_html": f"<div class='hermes-dynamic-content'>{denial}</div>",
+                "open_panel": "chat",
+                "presence": zesty_os.presence_manager.to_api_payload(),
+            })
+        deep_probe_payload = zesty_os.owner_profile.to_social_payload(
+            deep_probe_engine=zesty_os.deep_probe_engine,
+        )
         force_panel = "panelSocial"
+        probe_mode = True
+        skip_llm = is_pure_data_probe_query(cleaned_input)
+        target_image_url = deep_probe_payload.get("profile_image_url")
         output_intel = (
             "[CHIEF IDENTITY — Owner profile, not web search]\n\n"
             + (deep_probe_payload.get("facts_text") or "")
         )
         zesty_os.saved_profiles.set_last_probe(session_id, deep_probe_payload)
-    elif zesty_os.deep_probe_engine.should_probe(cleaned_input):
+        zesty_os.saved_profiles.record_session_action(
+            session_id,
+            "chief_identity",
+            deep_probe_payload.get("name") or "Chief",
+        )
+    elif will_probe and not presence_restricted:
         saved_match = zesty_os.saved_profiles.find_match(cleaned_input)
+        if saved_match and not zesty_os.presence_manager.allows_probe_context(saved_match):
+            saved_match = None
+        probe_mode = True
+        skip_llm = is_pure_data_probe_query(cleaned_input)
         if saved_match:
             deep_probe_payload = saved_match
             force_panel = "panelSocial"
@@ -1577,6 +2063,11 @@ def _ask_hermes_impl():
             if probe_facts:
                 output_intel = f"[SAVED PROFILE — from memory, not live search]\n\n{probe_facts}"
             zesty_os.saved_profiles.set_last_probe(session_id, saved_match)
+            zesty_os.saved_profiles.record_session_action(
+                session_id,
+                "saved_profile_recall",
+                saved_match.get("name") or "",
+            )
         else:
             deep_probe_payload = zesty_os.deep_probe_engine.probe(cleaned_input)
             if deep_probe_payload:
@@ -1584,35 +2075,49 @@ def _ask_hermes_impl():
                 target_image_url = deep_probe_payload.get("profile_image_url") or None
                 probe_facts = (deep_probe_payload.get("facts_text") or "").strip()
                 if probe_facts:
-                    if output_intel and output_intel.strip() and output_intel != ResearchService.NO_USABLE_FACTS:
-                        output_intel = f"{output_intel.strip()}\n\n{probe_facts}"
-                    else:
-                        output_intel = probe_facts
+                    output_intel = probe_facts
                 zesty_os.saved_profiles.set_last_probe(session_id, deep_probe_payload)
+                zesty_os.saved_profiles.record_session_action(
+                    session_id,
+                    "deep_probe",
+                    deep_probe_payload.get("name") or "",
+                    proactive_nudge=(
+                        "If Chief asks a follow-up about this person, answer from the probe — "
+                        "one brief connective phrase is enough."
+                    ),
+                )
 
-    local_context = zesty_os.query_local_chroma_database(cleaned_input)
+    zesty_os._update_session_continuity(
+        session_id,
+        cleaned_input,
+        deep_probe_payload=deep_probe_payload,
+    )
 
-    # Track active topic from current user intent (semantic continuity)
-    topic_hint = cleaned_input.strip()
-    if len(topic_hint) > 80:
-        topic_hint = topic_hint[:80].rsplit(" ", 1)[0]
-    try:
-        conversation_manager.set_active_topic(session_id, topic_hint)
-        conversation_manager.update_topic_structured(session_id, topic_hint)
-    except Exception:
-        pass
+    local_context = ""
+    if not will_probe:
+        local_context = zesty_os.query_local_chroma_database(cleaned_input)
 
-    # Add user message to conversation history
     conversation_manager.add_message(session_id, "user", cleaned_input)
 
-    reply_text, target_panel = zesty_os.call_llm(
-        cleaned_input,
-        local_context,
-        output_intel,
-        session_id,
-        lang_hint=lang_hint,
-        owner_self_query=owner_self_query,
-    )
+    include_chief = owner_self_query or zesty_os.owner_profile.is_chief_reference(cleaned_input)
+
+    if skip_llm and deep_probe_payload:
+        reply_text = format_probe_voice_summary(
+            deep_probe_payload, owner_self=owner_self_query
+        )
+        target_panel = force_panel or "panelSocial"
+        print("[PROBE FAST PATH] Skipping LLM — using structured probe data", flush=True)
+    else:
+        reply_text, target_panel = zesty_os.call_llm(
+            cleaned_input,
+            local_context,
+            output_intel,
+            session_id,
+            lang_hint=lang_hint,
+            owner_self_query=owner_self_query,
+            probe_mode=probe_mode,
+            include_chief_identity=include_chief,
+        )
 
     if force_panel:
         target_panel = force_panel
@@ -1625,12 +2130,22 @@ def _ask_hermes_impl():
     if deep_probe_payload:
         print(f"[DEEP PROBE] platform={deep_probe_payload.get('platform')} image={bool(target_image_url)}")
     
-    zesty_os.speak_text_edge_seamless(reply_text, lang_hint)
+    if not target_image_url and deep_probe_payload:
+        target_image_url = deep_probe_payload.get("profile_image_url")
+
+    zesty_os.speak_text_edge_seamless(
+        reply_text,
+        lang_hint,
+        social_probe=bool(deep_probe_payload or force_panel == "panelSocial"),
+    )
+
+    zesty_logger.record_latency((time.perf_counter() - request_start) * 1000)
 
     response_payload = {
         "voice_text": reply_text,
         "dynamic_html": f"<div class='hermes-dynamic-content'>{reply_text}</div>",
         "open_panel": target_panel,
+        "presence": zesty_os.presence_manager.to_api_payload(),
     }
     if target_image_url:
         response_payload["target_image_url"] = target_image_url
@@ -1639,6 +2154,7 @@ def _ask_hermes_impl():
         response_payload["social_profile"] = zesty_os.saved_profiles.profile_to_social_payload(
             deep_probe_payload
         )
+        response_payload["response_phase"] = "fast" if skip_llm else "summary"
 
     return jsonify(response_payload)
 #endregion

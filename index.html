@@ -528,7 +528,28 @@
   // GENERAL UI BEHAVIORS & ANIMATIONS
   // ==========================================
   function triggerZestyTypewriter(element, text, speed = 12) {
-      element.innerHTML = ""; let i = 0; function type() { if (i < text.length) { element.innerHTML += text.charAt(i); i++; setTimeout(type, speed); } } type();
+      if (!element || text == null) return;
+      const content = String(text);
+      if (content.length > 300) {
+          element.textContent = content;
+          return;
+      }
+      const effectiveSpeed = content.length > 150 ? 2 : speed;
+      element.innerHTML = "";
+      let i = 0;
+      function type() {
+          if (i < content.length) {
+              element.innerHTML += content.charAt(i);
+              i++;
+              setTimeout(type, effectiveSpeed);
+          }
+      }
+      type();
+  }
+
+  function setZestyPanelText(element, text) {
+      if (!element) return;
+      triggerZestyTypewriter(element, text || '', 2);
   }
 
   function minimizeZestyPanel(panelId, panelName) {
@@ -601,17 +622,18 @@
 
     applySocialProfileMetrics(socialProfile);
 
+    if (sourceLabel) { sourceLabel.style.color = 'var(--cyan)'; sourceLabel.innerText = 'DEEP PROBE ACTIVE'; }
+    if (statusLabel) { statusLabel.style.color = '#00E676'; statusLabel.innerText = 'LIVE'; }
+
+    setZestyPanelText(contentArea, panelText);
+
     if (photoFrame) photoFrame.classList.add('scanning');
-    if (sourceLabel) { sourceLabel.style.color = 'var(--cyan)'; sourceLabel.innerText = 'DEEP PROBE SCANNING...'; }
-    if (statusLabel) { statusLabel.style.color = '#00E676'; statusLabel.innerText = 'ACTIVE'; }
-    contentArea.innerHTML = "<span style='color:var(--cyan)'>// DEEP PROBE ENGINE — EXTRACTING SOCIAL VECTORS...</span>";
-    if (hudImg) hudImg.style.display = 'none';
+    if (hudImg) {
+      hudImg.src = imageUrl || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80';
+      hudImg.style.display = 'block';
+    }
 
     setTimeout(() => {
-      if (hudImg) {
-        hudImg.src = imageUrl || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80';
-        hudImg.style.display = 'block';
-      }
       if (photoFrame) photoFrame.classList.remove('scanning');
       if (sourceLabel) {
         sourceLabel.style.color = '#FF4500';
@@ -626,9 +648,8 @@
         }
       }
       if (statusLabel) { statusLabel.style.color = '#FF4500'; statusLabel.innerText = 'LOCKED'; }
-      triggerZestyTypewriter(contentArea, panelText);
       ZestyEventBus.emit('deep-probe:populated', { socialProfile, panelText, imageUrl });
-    }, 1200);
+    }, 400);
   }
 
   ZestyEventBus.on('deep-probe:ready', (data) => {
@@ -671,14 +692,19 @@
         const photoFrame = document.getElementById('social-photo-frame'); const sourceLabel = document.getElementById('radar-source'); const statusLabel = document.getElementById('radar-status');
 
         if (contentArea && data.voice_text) {
-          photoFrame.classList.add('scanning'); sourceLabel.style.color = "var(--cyan)"; sourceLabel.innerText = "SCANNING WEB VECTORS..."; statusLabel.innerText = "ACTIVE";
-          contentArea.innerHTML = "<span style='color:var(--cyan)'>// VONDA MAX PROTOCOL INITIATED...</span>"; hudImg.style.display = 'none';
-
+          if (photoFrame) photoFrame.classList.add('scanning');
+          if (sourceLabel) { sourceLabel.style.color = "var(--cyan)"; sourceLabel.innerText = "SCANNING..."; }
+          if (statusLabel) statusLabel.innerText = "ACTIVE";
+          setZestyPanelText(contentArea, data.voice_text);
+          if (hudImg) {
+            hudImg.src = data.target_image_url || "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80";
+            hudImg.style.display = 'block';
+          }
           setTimeout(() => {
-            if (hudImg) { hudImg.src = data.target_image_url || "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80"; hudImg.style.display = 'block'; }
-            photoFrame.classList.remove('scanning'); sourceLabel.style.color = "#FF4500"; sourceLabel.innerText = "INSTAGRAM / LINKEDIN MATCH"; statusLabel.style.color = "#FF4500"; statusLabel.innerText = "LOCKED";
-            triggerZestyTypewriter(contentArea, data.voice_text);
-          }, 1200);
+            if (photoFrame) photoFrame.classList.remove('scanning');
+            if (sourceLabel) { sourceLabel.style.color = "#FF4500"; sourceLabel.innerText = "INSTAGRAM / LINKEDIN MATCH"; }
+            if (statusLabel) { statusLabel.style.color = "#FF4500"; statusLabel.innerText = "LOCKED"; }
+          }, 400);
         }
       } else {
         const cArea = document.getElementById( targetPanelId === "panelFlavour" ? 'flavourContentArea' : targetPanelId === "panelFamily" ? 'familyContentArea' : targetPanelId === "panelCraftsmen" ? 'craftsmenContentArea' : targetPanelId === "panelRecipe" ? 'recipeContentArea' : targetPanelId === "panelHelp" ? 'helpContentArea' : targetPanelId === "panelDriver" ? 'driverContentArea' : 'searchBriefBody' );

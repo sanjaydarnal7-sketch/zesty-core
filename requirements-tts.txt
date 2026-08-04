@@ -1,0 +1,9 @@
+# Sarvam Bulbul v3 TTS (cloud API — low latency, Hindi + Hinglish)
+# Install: source .venv/bin/activate && pip install -r requirements-tts.txt
+# Set:     export SARVAM_API_KEY=your_key   (free tier at https://www.sarvam.ai)
+
+sarvamai>=0.1.0
+
+# Legacy cloud fallback (optional)
+edge-tts>=6.1.0
+elevenlabs>=1.0.0
